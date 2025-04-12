@@ -1,0 +1,6 @@
+numpy
+pyaudio
+aubio
+paho-mqtt
+rich
+textual
