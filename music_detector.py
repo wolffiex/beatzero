@@ -50,6 +50,10 @@ METHOD_DESCRIPTIONS = {
     "specflux": "Spectral Flux (overall)"
 }
 
+# Aubio classes reference
+# aubio.notes(method="default", buf_size=1024, hop_size=512, samplerate=44100)
+# Note detection
+
 onset_detectors = {}
 
 for method in ONSET_METHODS:
@@ -68,6 +72,11 @@ pitch_detector.set_silence(-40)
 # Initialize tempo detection (BPM)
 tempo_detector = aubio.tempo("specdiff", BUFFER_SIZE, BUFFER_SIZE, SAMPLE_RATE)
 tempo_detector.set_threshold(0.2)
+
+# Initialize note detection
+note_detector = aubio.notes("default", BUFFER_SIZE, BUFFER_SIZE, SAMPLE_RATE)
+note_detector.set_silence(-40)
+note_detector.set_minioi_ms(50)  # Minimum interval between notes (ms)
 
 # Initialize FFT for spectral analysis
 fft = aubio.fft(BUFFER_SIZE)
@@ -113,7 +122,7 @@ def calculate_bpm():
     return 0.0
 
 # Simple function to create a real-time display table
-def create_audio_table(onset_results, pitch, pitch_confidence, low, mid, high, volume, bpm, aubio_bpm):
+def create_audio_table(onset_results, pitch, pitch_confidence, note, low, mid, high, volume, bpm, aubio_bpm):
     table = Table(title=f"Real-time Audio Analysis")
     
     table.add_column("Feature", style="cyan")
@@ -137,6 +146,47 @@ def create_audio_table(onset_results, pitch, pitch_confidence, low, mid, high, v
     # Pitch detection
     pitch_color = "yellow" if pitch_confidence > 0.5 else "dim"
     table.add_row("Pitch".ljust(15), f"[{pitch_color}]{pitch:6.1f} Hz[/{pitch_color}]".rjust(15))
+    
+    # Note detection
+    note_detected = note.size > 0 and note[0] > 0
+    
+    # Create a simple visualization with ASCII blocks based on pitch
+    # Map the pitch to our 8 blocks (we know pitch is reliable)
+    note_blocks = ""
+    
+    # Use pitch frequency for the visualization
+    # Map expanded musical range (roughly 20Hz-5000Hz) to 8 blocks
+    # Each block represents a range of frequencies
+    freq_ranges = [
+        (20, 80),      # Sub-bass (very low)
+        (80, 250),     # Bass
+        (250, 500),    # Low-mids
+        (500, 1000),   # Mids
+        (1000, 2000),  # Upper-mids
+        (2000, 3000),  # Presence
+        (3000, 4000),  # Brilliance
+        (4000, 8000)   # Air/Ultra high
+    ]
+    
+    # Light up the block corresponding to the current pitch
+    # Also consider the note detection for coloring
+    highlight_note = note_detected and pitch_confidence > 0.4
+    for i, (min_freq, max_freq) in enumerate(freq_ranges):
+        if min_freq <= pitch < max_freq:
+            if highlight_note:
+                # Musical note detected in this range - use filled block with bright color
+                note_blocks += "■ "  # Filled block
+            else:
+                # Pitch detected but not confirmed as musical note
+                note_blocks += "▣ "  # Half-filled block
+        else:
+            note_blocks += "□ "  # Empty block
+    
+    note_status = "[bold blue]YES[/bold blue]" if note_detected else "[dim]no[/dim]"
+    table.add_row("Note Detected".ljust(15), f"{note_status:>15}")
+    
+    # Add frequency visualization - just the blocks without labels
+    table.add_row("Freq Bands".ljust(15), f"[blue]{note_blocks}[/blue]".rjust(15))
     
     # Frequency bands with visual meter
     low_meter = "▓" * int(low * 10)
@@ -206,6 +256,9 @@ try:
             pitch = pitch_detector(signal)[0]
             pitch_confidence = pitch_detector.get_confidence()
             
+            # Detect notes
+            note = note_detector(signal)
+            
             # Spectral analysis
             spectrum = fft(signal)
             spectrum_magnitude = spectrum.norm
@@ -230,6 +283,7 @@ try:
             table = create_audio_table(
                 onset_results,
                 pitch, pitch_confidence,
+                note,
                 low_band, mid_band, high_band, 
                 volume,
                 bpm,
