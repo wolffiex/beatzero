@@ -4,3 +4,4 @@ aubio
 paho-mqtt
 rich
 textual
+pygame
