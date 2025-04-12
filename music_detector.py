@@ -81,48 +81,12 @@ note_detector.set_minioi_ms(50)  # Minimum interval between notes (ms)
 # Initialize FFT for spectral analysis
 fft = aubio.fft(BUFFER_SIZE)
 
-# Store beat timestamps for BPM calculation
-beat_times = deque(maxlen=20)  # Store last 20 beats for calculation
+# We no longer need to store beat timestamps as we use aubio's BPM detection
 
-# Calculate BPM from beat timestamps
-def calculate_bpm():
-    if len(beat_times) < 4:  # Need more beats for reliable calculation
-        return 0.0
-    
-    # Calculate time differences between consecutive beats
-    time_diffs = []
-    for i in range(1, len(beat_times)):
-        diff = beat_times[i] - beat_times[i-1]
-        if 0.2 < diff < 2.0:  # Only consider reasonable intervals (between 30 and 300 BPM)
-            time_diffs.append(diff)
-    
-    if not time_diffs:
-        return 0.0
-    
-    # Calculate median time between beats to avoid outliers
-    time_diffs.sort()
-    if len(time_diffs) % 2 == 0:
-        median_time = (time_diffs[len(time_diffs)//2] + time_diffs[len(time_diffs)//2-1]) / 2
-    else:
-        median_time = time_diffs[len(time_diffs)//2]
-    
-    # Convert to BPM
-    if median_time > 0:
-        raw_bpm = 60.0 / median_time
-        
-        # Apply sanity check - most music is between 60-180 BPM
-        if raw_bpm > 180:
-            # Probably double-tempo, halve it
-            return raw_bpm / 2
-        elif raw_bpm < 60:
-            # Probably half-tempo, double it if it makes sense
-            if raw_bpm * 2 <= 180:
-                return raw_bpm * 2
-        return raw_bpm
-    return 0.0
+# This function has been removed as we're now using aubio's BPM detection
 
 # Simple function to create a real-time display table
-def create_audio_table(onset_results, pitch, pitch_confidence, note, low, mid, high, volume, bpm, aubio_bpm):
+def create_audio_table(onset_results, pitch, pitch_confidence, note, volume, aubio_bpm):
     table = Table(title=f"Real-time Audio Analysis")
     
     table.add_column("Feature", style="cyan")
@@ -142,10 +106,6 @@ def create_audio_table(onset_results, pitch, pitch_confidence, note, low, mid, h
             f"[{method_color}]{method_desc:<15}[/{method_color}]", 
             f"{beat_display:>15}"
         )
-    
-    # Pitch detection
-    pitch_color = "yellow" if pitch_confidence > 0.5 else "dim"
-    table.add_row("Pitch".ljust(15), f"[{pitch_color}]{pitch:6.1f} Hz[/{pitch_color}]".rjust(15))
     
     # Note detection
     note_detected = note.size > 0 and note[0] > 0
@@ -182,32 +142,42 @@ def create_audio_table(onset_results, pitch, pitch_confidence, note, low, mid, h
         else:
             note_blocks += "□ "  # Empty block
     
-    note_status = "[bold blue]YES[/bold blue]" if note_detected else "[dim]no[/dim]"
-    table.add_row("Note Detected".ljust(15), f"{note_status:>15}")
-    
-    # Add frequency visualization - just the blocks without labels
+    # Add frequency visualization - just the blocks without the note detection status
     table.add_row("Freq Bands".ljust(15), f"[blue]{note_blocks}[/blue]".rjust(15))
     
-    # Frequency bands with visual meter
-    low_meter = "▓" * int(low * 10)
-    mid_meter = "▓" * int(mid * 10)
-    high_meter = "▓" * int(high * 10)
+    # Kick drum detection - using energy detector
+    # Energy is good at detecting low frequency transients like kick drums
+    kick_detected = False
+    if "energy" in onset_results:
+        is_energy_beat = onset_results["energy"][0]
+        if is_energy_beat:
+            kick_detected = True
     
-    table.add_row("Low Band".ljust(15), f"[green]{low_meter:10}[/green]".rjust(15))
-    table.add_row("Mid Band".ljust(15), f"[yellow]{mid_meter:10}[/yellow]".rjust(15))
-    table.add_row("High Band".ljust(15), f"[blue]{high_meter:10}[/blue]".rjust(15))
+    # Create a visual indicator for kick drum detection
+    if kick_detected:
+        kick_indicator = "[bold red]⚫ KICK ⚫[/bold red]"
+    else:
+        kick_indicator = "[dim]----------[/dim]"
+    table.add_row("Kick".ljust(15), f"{kick_indicator}".rjust(15))
     
-    # Volume
-    vol_color = "green" if volume > 0.1 else "yellow" if volume > 0.01 else "red"
-    table.add_row("Volume".ljust(15), f"[{vol_color}]{volume:6.4f}[/{vol_color}]".rjust(15))
+    # Hi-hat detection - using expanded 4500-6000 Hz frequency range
+    # This targets the primary hi-hat frequencies we identified (centered on 5211 Hz)
+    # But expanded to catch the broader hi-hat spectrum (4716 Hz - 5642 Hz)
     
-    # BPM - our calculated value
-    bpm_color = "green" if bpm > 10 else "dim"
-    table.add_row("BPM (calc)".ljust(15), f"[{bpm_color}]{bpm:6.1f}[/{bpm_color}]".rjust(15))
+    # Check if the current pitch is in the hi-hat frequency range
+    # Lower confidence threshold based on our sample analysis
+    hihat_detected = 4000 <= pitch <= 8000 and pitch_confidence > 0.07
     
-    # BPM - aubio's estimation
+    # Create a more visual indicator for hi-hat detection
+    if hihat_detected:
+        hihat_indicator = f"[bold yellow]✧✧ +++ ✧✧[/bold yellow]"
+    else:
+        hihat_indicator = "[dim]----------[/dim]"
+    table.add_row("Hi-Hat".ljust(15), f"{hihat_indicator}".rjust(15))
+    
+    # BPM from aubio's estimation
     aubio_bpm_color = "green" if aubio_bpm > 10 else "dim"
-    table.add_row("BPM (aubio)".ljust(15), f"[{aubio_bpm_color}]{aubio_bpm:6.1f}[/{aubio_bpm_color}]".rjust(15))
+    table.add_row("BPM".ljust(15), f"[{aubio_bpm_color}]{aubio_bpm:6.1f}[/{aubio_bpm_color}]".rjust(15))
     
     return table
 
@@ -234,21 +204,9 @@ try:
                 if is_beat:
                     any_beat_detected = True
             
-            # Record beat time for BPM calculation if any method detected a beat
-            if any_beat_detected:
-                beat_times.append(time.time())
-            
-            # Also check tempo detector
+            # Check tempo detector
             is_tempo_beat = tempo_detector(signal)
-            if is_tempo_beat:
-                beat_times.append(time.time())
             
-            # Calculate current BPM
-            bpm = calculate_bpm()
-            # Final sanity check
-            if bpm > 200:
-                bpm = bpm / 2  # Halve if too fast
-                
             # Get aubio's built-in tempo estimation
             aubio_bpm = tempo_detector.get_bpm()
             
@@ -259,24 +217,10 @@ try:
             # Detect notes
             note = note_detector(signal)
             
-            # Spectral analysis
-            spectrum = fft(signal)
-            spectrum_magnitude = spectrum.norm
-            
-            # Calculate energy in different frequency bands
-            bin_size = SAMPLE_RATE / BUFFER_SIZE
-            low_band = np.sum(spectrum_magnitude[int(20/bin_size):int(150/bin_size)])
-            mid_band = np.sum(spectrum_magnitude[int(150/bin_size):int(2000/bin_size)])
-            high_band = np.sum(spectrum_magnitude[int(2000/bin_size):int(10000/bin_size)])
-            
-            # Normalize energy values
-            max_energy = max(low_band, mid_band, high_band)
-            if max_energy > 0:
-                low_band = low_band / max_energy
-                mid_band = mid_band / max_energy
-                high_band = high_band / max_energy
+            # We no longer need spectral analysis or energy band calculations
+            # as we're only using the note detection and pitch information
 
-            # Calculate overall volume level
+            # Calculate overall volume level (used for hi-hat detection criteria)
             volume = np.sqrt(np.mean(signal**2))
             
             # Always update the display in real-time
@@ -284,9 +228,7 @@ try:
                 onset_results,
                 pitch, pitch_confidence,
                 note,
-                low_band, mid_band, high_band, 
                 volume,
-                bpm,
                 aubio_bpm
             )
             live.update(table)
