@@ -184,6 +184,10 @@ if not connect_mqtt():
 # Apply a window function to reduce spectral leakage
 hann_window = np.hanning(BUFFER_SIZE)
 
+# Track publish rate
+publish_count = 0
+last_report_time = time.time()
+
 try:
     while True:
         # Read audio data
@@ -300,21 +304,15 @@ try:
 
         # Publish to MQTT
         publish_data(data_packet)
+        publish_count += 1
 
-        # Console feedback (minimal to reduce CPU usage)
-        if (
-            kick_detected
-            or hihat_detected
-            or any(data["is_beat"] for data in onset_data.values())
-            or any(
-                e > 0.65 for e in smoothed_band_energy
-            )  # Match our detection thresholds
-        ):
-            # Format spectrum data for display
-            spectrum_str = " ".join(f"{e:.2f}" for e in smoothed_band_energy)
-            console.print(
-                f"[{timestamp}] BPM={bpm:.1f}, Kick={kick_detected}, HiHat={hihat_detected}, Gain={gain_multiplier:.2f}, Vol={avg_volume:.4f}, Spectrum=[{spectrum_str}]"
-            )
+        # Log publish rate every 5 seconds
+        current_time = time.time()
+        if current_time - last_report_time >= 5:
+            rate = publish_count / (current_time - last_report_time)
+            console.print(f"Publishing rate: {rate:.2f} messages/second")
+            publish_count = 0
+            last_report_time = current_time
 
         # Small delay to reduce CPU usage
         time.sleep(0.01)
