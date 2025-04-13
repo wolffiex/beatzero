@@ -1,10 +1,43 @@
 import pygame
 import time
+import json
+import os
+import paho.mqtt.client as mqtt
+from datetime import datetime
 
 # Window setup
 WIDTH, HEIGHT = 600, 600
 FPS = 30
 BACKGROUND_COLOR = (10, 10, 20)
+
+# MQTT parameters
+MQTT_BROKER = os.environ.get("MQTT_BROKER", "localhost")
+MQTT_PORT = 1883
+MQTT_TOPIC = "beatzero/music_detection"
+MQTT_CLIENT_ID = f"beatzero-visualizer-{int(time.time())}"
+
+# Global variable to store latest data from MQTT
+latest_data = None
+
+
+# MQTT callbacks
+def on_connect(client, userdata, flags, rc, properties=None):
+    """Callback for when the client connects to the broker"""
+    if rc == 0:
+        print(f"Connected to MQTT broker at {MQTT_BROKER}")
+        client.subscribe(MQTT_TOPIC)
+        print(f"Subscribed to topic: {MQTT_TOPIC}")
+    else:
+        print(f"Failed to connect to MQTT broker with code: {rc}")
+
+
+def on_message(client, userdata, msg):
+    """Callback for when a message is received from the broker"""
+    global latest_data
+    try:
+        latest_data = json.loads(msg.payload.decode())
+    except Exception as e:
+        print(f"Error parsing message: {e}")
 
 
 def main():
@@ -16,15 +49,31 @@ def main():
 
     # Setup font for labels
     font = pygame.font.Font(None, 24)
+    small_font = pygame.font.Font(None, 18)
+
+    # Initialize MQTT client with API version 2
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=MQTT_CLIENT_ID)
+    client.on_connect = on_connect
+    client.on_message = on_message
+
+    # Connect to MQTT broker
+    try:
+        client.connect(MQTT_BROKER, MQTT_PORT)
+        client.loop_start()
+        print(f"Connecting to MQTT broker at {MQTT_BROKER}...")
+    except Exception as e:
+        print(f"Failed to connect to MQTT broker: {e}")
+        # We'll continue without MQTT and use default values
+
+    # Default values when no MQTT data is available
+    bpm = 58
+    volume = 0.7
+    is_tempo_beat = False
+    timestamp = None
 
     # BPM blinker configuration
-    bpm = 58
-
     blink_state = False  # Start with blinker off
     next_transition_time = 0
-
-    # Volume level (fixed for now)
-    volume = 0.7  # Range 0-1
 
     # Main game loop
     running = True
@@ -39,6 +88,16 @@ def main():
                 if event.key == pygame.K_ESCAPE:
                     running = False
 
+        # Update data if new MQTT message received
+        if latest_data:
+            # Update BPM from MQTT data
+            if "bpm" in latest_data:
+                bpm = latest_data["bpm"]
+
+            # Update volume from MQTT data
+            if "volume" in latest_data:
+                volume = latest_data["volume"]
+
         # Check if it's time for a blink transition
         if current_time >= next_transition_time:
             ms_per_beat = 60000 / bpm  # Convert BPM to milliseconds
@@ -52,8 +111,8 @@ def main():
         # Clear the screen
         screen.fill(BACKGROUND_COLOR)
 
-        # Draw BPM blinker in top left
-        bpm_text = font.render("BPM", True, (255, 255, 255))
+        # Draw BPM blinker in top left - showing as integer
+        bpm_text = font.render(f"BPM {int(bpm)}", True, (255, 255, 255))
         screen.blit(bpm_text, (20, 20))
 
         # Draw blinking box
@@ -62,7 +121,7 @@ def main():
         else:
             blink_color = (50, 50, 70)  # Dark gray when off
 
-        pygame.draw.rect(screen, blink_color, (75, 17, 20, 20))
+        pygame.draw.rect(screen, blink_color, (90, 17, 20, 20))
 
         # Draw Volume indicator
         vol_text = font.render("Volume", True, (255, 255, 255))
@@ -97,6 +156,23 @@ def main():
                 ),
             )
 
+        # Display connection status and timestamp
+        if timestamp:
+            try:
+                formatted_time = datetime.fromisoformat(timestamp).strftime("%H:%M:%S")
+                time_text = small_font.render(
+                    f"Time: {formatted_time}", True, (150, 150, 150)
+                )
+                screen.blit(time_text, (WIDTH - 100, 20))
+            except:
+                pass
+
+        # Display MQTT connection status
+        status_text = "Connected" if latest_data else "No MQTT data"
+        status_color = (100, 255, 100) if latest_data else (255, 100, 100)
+        status_display = small_font.render(status_text, True, status_color)
+        screen.blit(status_display, (20, HEIGHT - 30))
+
         # Update the display
         pygame.display.flip()
 
@@ -104,6 +180,11 @@ def main():
         clock.tick(FPS)
 
     # Clean up
+    try:
+        client.loop_stop()
+        client.disconnect()
+    except:
+        pass
     pygame.quit()
 
 
