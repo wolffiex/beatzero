@@ -24,6 +24,9 @@ MQTT_CLIENT_ID = f"beatzero-broker-{int(time.time())}"
 # 30 FPS publishing rate
 FRAME_TIME = 1 / 30  # 33.3ms for 30fps
 
+# Minimum volume threshold (baseline noise floor)
+MIN_VOLUME_THRESHOLD = 0.01
+
 # Set up Rich console
 console = Console()
 
@@ -139,10 +142,13 @@ def process_audio_buffer(signal):
     volume = float(np.sqrt(np.mean(signal**2)))
     data["volume"] = volume
 
+    # Always add to volume history
+    volume_history.append(volume)
+
     return data
 
 
-def combine_packets(packets):
+def combine_packets(packets, volume_history):
     """Combine multiple data packets into a single packet for publishing"""
     if not packets:
         return None
@@ -168,8 +174,19 @@ def combine_packets(packets):
         combined_notes.update(packet["notes"])
     result["notes"] = list(combined_notes)
 
-    # Use the latest volume
-    result["volume"] = packets[-1]["volume"]
+    # Get the maximum volume from all packets in this buffer
+    raw_volume = max(packet["volume"] for packet in packets)
+
+    # Get the max volume from history with a minimum floor
+    max_vol = max(*volume_history, MIN_VOLUME_THRESHOLD)
+
+    # If volume is below threshold, set to zero
+    if raw_volume < MIN_VOLUME_THRESHOLD:
+        result["volume"] = 0.0
+    else:
+        # Otherwise normalize between 0 and 1
+        normalized = raw_volume / max_vol
+        result["volume"] = min(1.0, max(0.0, normalized))
 
     return result
 
@@ -192,6 +209,9 @@ try:
     # Buffer to store data packets between publishes
     buffer = deque()
 
+    # Buffer for volume normalization (stores last 100 volume samples)
+    volume_history = deque(maxlen=100)
+
     while True:
         # Read audio data
         audiobuffer = stream.read(HOP_SIZE, exception_on_overflow=False)
@@ -207,7 +227,7 @@ try:
         current_time = time.time()
         if current_time >= next_frame:
             # Combine all buffered packets
-            combined_packet = combine_packets(list(buffer))
+            combined_packet = combine_packets(list(buffer), volume_history)
 
             # Clear the buffer
             buffer.clear()
