@@ -20,7 +20,7 @@ MQTT_PORT = 1883
 MQTT_TOPIC = "beatzero/spectrum_data"
 MQTT_CLIENT_ID = f"beatzero-fft-publisher-{int(time.time())}"
 
-# Define frequency bands for analysis (removed sub-bass that's too low for most mics)
+# Define frequency bands for analysis (split high frequencies into two bands)
 FREQ_BANDS = [
     (80, 250),  # Bass
     (250, 500),  # Low-mids
@@ -28,7 +28,8 @@ FREQ_BANDS = [
     (1000, 2000),  # Upper-mids
     (2000, 3000),  # Presence
     (3000, 4000),  # Brilliance
-    (4000, 8000),  # Air/Ultra high
+    (4000, 5000),  # High (4-5kHz)
+    (5000, 8000),  # Ultra high (5-8kHz)
 ]
 
 # Set up Rich console
@@ -206,9 +207,9 @@ try:
             and smoothed_band_energy[0] > 0.5  # Bass band (80-250Hz) for kick detection
         )
 
-        # Detect hi-hat (using high frequency energy)
+        # Detect hi-hat (using the 5-8kHz ultra high frequency band)
         hihat_detected = bool(
-            smoothed_band_energy[6] > 0.5  # Updated index to last band (4000-8000Hz)
+            smoothed_band_energy[7] > 0.5  # Ultra high band (5-8kHz)
             and onset_data.get("hfc", {}).get("is_beat", False)
         )
 
