@@ -120,14 +120,7 @@ def process_audio_buffer(signal):
     # Detect onsets with all methods
     onset_data = {}
     for method, detector in onset_detectors.items():
-        is_beat = bool(detector(signal))
-        descriptor = float(detector.get_descriptor())
-        threshold = float(detector.get_threshold())
-        onset_data[method] = {
-            "is_beat": is_beat,
-            "descriptor": descriptor,
-            "threshold": threshold,
-        }
+        onset_data[method] = bool(detector(signal))
     data["onsets"] = onset_data
 
     # Check tempo detector
@@ -163,18 +156,10 @@ def combine_packets(packets):
     # Combine onset data (OR the is_beat flags)
     onset_data = {}
     for method in ONSET_METHODS:
-        # Use latest descriptor and threshold values
-        descriptor = packets[-1]["onsets"][method]["descriptor"]
-        threshold = packets[-1]["onsets"][method]["threshold"]
-
         # OR together all is_beat flags
-        is_beat = any(packet["onsets"][method]["is_beat"] for packet in packets)
+        is_beat = any(packet["onsets"][method] for packet in packets)
 
-        onset_data[method] = {
-            "is_beat": is_beat,
-            "descriptor": descriptor,
-            "threshold": threshold,
-        }
+        onset_data[method] = is_beat
     result["onsets"] = onset_data
 
     # Combine tempo data (OR the is_beat, use latest BPM)
