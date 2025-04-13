@@ -87,81 +87,82 @@ class OnsetDetector:
 
 class NoteVisualizer:
     def __init__(self):
-        # Store the notes with their activation times
-        self.active_note_times = {}  # {note_value: activation_time}
+        # Store the 12 pitch classes with their activation times
+        self.active_pitch_classes = {}  # {pitch_class (0-11): activation_time}
         self.activation_duration = 200
+        self.note_names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
     def update(self, notes):
-        # Add current time for each note in the new list
+        # Add current time for each note, mapped to pitch class (0-11)
         current_time = pygame.time.get_ticks()
         for note in notes:
-            self.active_note_times[int(note)] = current_time
+            # Convert MIDI note to pitch class (C=0, C#=1, ..., B=11)
+            pitch_class = int(note) % 12
+            self.active_pitch_classes[pitch_class] = current_time
 
     def render(self, surface, font, x, y, width, height):
-        """Draw the note visualizer - just a simple row of lights for each MIDI note"""
+        """Draw the note visualizer - 12 boxes for the 12 pitch classes"""
         # Get current time to check which notes are still active
         current_time = pygame.time.get_ticks()
 
         # Draw section title
-        title_surface = font.render("Notes Detected", True, (200, 200, 200))
+        title_surface = font.render("Notes", True, (200, 200, 200))
         surface.blit(title_surface, (x, y))
 
         # Draw background
         panel_y = y + 30
-        panel_height = 30
+        panel_height = 40
         pygame.draw.rect(surface, (20, 20, 30), (x, panel_y, width, panel_height))
         pygame.draw.rect(surface, (50, 50, 60), (x, panel_y, width, panel_height), 1)
 
-        # Calculate light size to fit many possible notes
-        # We'll support up to 128 possible MIDI notes (0-127)
-        light_size = 8  # Each light is 8x8 pixels
-
-        # Calculate how many note indicators can fit in one row
-        # This determines our wrapping point for displaying notes
-        max_notes_per_row = (width - 20) // light_size
-
-        # Remove notes that have been visible for longer than activation_duration
-        # This creates the brief flashing effect, similar to onset detectors
-        notes_to_remove = []
-        for note, timestamp in self.active_note_times.items():
+        # Remove pitch classes that have been visible for longer than activation_duration
+        pitch_classes_to_remove = []
+        for pitch_class, timestamp in self.active_pitch_classes.items():
             if current_time - timestamp > self.activation_duration:
-                notes_to_remove.append(note)
+                pitch_classes_to_remove.append(pitch_class)
 
-        for note in notes_to_remove:
-            self.active_note_times.pop(note)
+        for pitch_class in pitch_classes_to_remove:
+            self.active_pitch_classes.pop(pitch_class)
 
-        # Draw all active notes (still within their activation window)
-        for midi_note in self.active_note_times:
-            # Map MIDI note number to a horizontal position using modulo
-            # This wrapping approach means:
-            # - Each MIDI note gets assigned to a specific column
-            # - Notes that differ by max_notes_per_row wrap to the same position
-            # - Notes that are 12 semitones apart (an octave) will be in similar
-            #   relative positions if max_notes_per_row is not divisible by 12
-            col = midi_note % max_notes_per_row
+        # Use fixed box dimensions
+        box_width = 30  # Fixed width for each box
+        box_height = 25
+        box_spacing = 5  # Space between boxes
+        
+        # Calculate total width needed for all boxes
+        total_boxes_width = (box_width * 12) + (box_spacing * 11)
+        
+        # Calculate starting x to center all boxes in the panel
+        start_x = x + ((width - total_boxes_width) // 2)
+        box_y = panel_y + 7
 
-            # Convert the column position to actual pixel coordinates
-            light_x = x + 10 + col * light_size
-            light_y = panel_y + 10
-
-            # All active notes are shown in white
-            light_color = (255, 255, 255)  # White when on
-
-            pygame.draw.rect(
-                surface, light_color, (light_x, light_y, light_size, light_size)
-            )
+        # Draw all 12 pitch class boxes
+        for pitch_class in range(12):
+            box_x = start_x + (pitch_class * (box_width + box_spacing))
+            
+            # Check if this pitch class is active
+            is_active = pitch_class in self.active_pitch_classes
+            
+            # Set box color based on activity
+            if is_active:
+                box_color = (255, 255, 255)  # White when active
+            else:
+                box_color = (40, 40, 50)     # Dark gray when inactive
+            
+            # Draw the box
+            pygame.draw.rect(surface, box_color, (box_x, box_y, box_width, box_height))
 
 
 class PitchVisualizer:
     def __init__(self):
         # Store pitches with their activation times
         self.active_pitches = {}  # {pitch_value: activation_time}
-        self.min_pitch = 60  # Min frequency in Hz
-        self.max_pitch = 6000  # Max frequency in Hz - increased for higher pitches
+        self.min_pitch = 50  # Min frequency in Hz - widened to prevent low-end clipping
+        self.max_pitch = 500  # Max frequency in Hz - widened to prevent high-end clipping
         self.fade_duration = 350  # Fade out duration in ms
 
     def activate(self, pitch, confidence, current_time):
-        if confidence > 0.3 and pitch > 0:
+        if confidence > 0.2 and pitch > 0:
             # Add current pitch with its activation time
             self.active_pitches[pitch] = current_time
 
@@ -323,6 +324,7 @@ def main():
                     pitch_viz.activate(
                         pitch_data["value"], pitch_data["confidence"], current_time
                     )
+                    # print(pitch_data["value"], pitch_data["confidence"])
 
         # Check if it's time for a blink transition
         if current_time >= next_transition_time:
