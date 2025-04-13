@@ -121,13 +121,12 @@ class SpectrumVisualizer:
             )
 
             # Determine color based on energy level
-            if energy < 0.1:
-                # Much darker when inactive - almost completely black
-                color = (2, 2, 5)
-            elif energy < 0.3:
-                color = (75, 75, 55)
+            if energy < 0.3:
+                color = (0, 0, 0)
             elif energy < 0.5:
                 color = (125, 125, 125)
+            elif energy < 0.7:
+                color = (175, 175, 175)
             else:
                 color = (255, 255, 255)
 
