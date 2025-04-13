@@ -6,7 +6,7 @@ import paho.mqtt.client as mqtt
 from datetime import datetime
 
 # Window setup
-WIDTH, HEIGHT = 600, 600
+WIDTH, HEIGHT = 600, 350
 FPS = 30
 BACKGROUND_COLOR = (10, 10, 20)
 
@@ -69,7 +69,7 @@ class OnsetDetector:
         if active:
             box_color = (200, 200, 200)
         else:
-            box_color = (50, 50, 70)  # Dark gray when inactive
+            box_color = (10, 10, 20)  # Dark gray when inactive
 
         # Draw indicator box
         box_x = x + width - 30
@@ -83,6 +83,64 @@ class OnsetDetector:
             surface, (100, 100, 120), (box_x, box_y, box_size, box_size), 1
         )
         self.active = False
+
+
+class NoteVisualizer:
+    def __init__(self):
+        # Store the notes with their activation times
+        self.active_note_times = {}  # {note_value: activation_time}
+        self.activation_duration = 200
+
+    def update(self, notes):
+        # Add current time for each note in the new list
+        current_time = pygame.time.get_ticks()
+        for note in notes:
+            self.active_note_times[int(note)] = current_time
+
+    def render(self, surface, font, x, y, width, height):
+        """Draw the note visualizer - just a simple row of lights for each MIDI note"""
+        # Get current time to check which notes are still active
+        current_time = pygame.time.get_ticks()
+
+        # Draw section title
+        title_surface = font.render("Notes Detected", True, (200, 200, 200))
+        surface.blit(title_surface, (x, y))
+
+        # Draw background
+        panel_y = y + 30
+        panel_height = 30
+        pygame.draw.rect(surface, (20, 20, 30), (x, panel_y, width, panel_height))
+        pygame.draw.rect(surface, (50, 50, 60), (x, panel_y, width, panel_height), 1)
+
+        # Calculate light size to fit many possible notes
+        # We'll support up to 128 possible MIDI notes (0-127)
+        light_size = 8
+        max_notes_per_row = (width - 20) // (light_size)
+
+        # Clean up old notes that have expired
+        notes_to_remove = []
+        for note, timestamp in self.active_note_times.items():
+            if current_time - timestamp > self.activation_duration:
+                notes_to_remove.append(note)
+
+        for note in notes_to_remove:
+            self.active_note_times.pop(note)
+
+        # Draw all active notes
+        for midi_note in self.active_note_times:
+            # Calculate position in the grid
+            col = midi_note % max_notes_per_row
+
+            # Calculate light position
+            light_x = x + 10 + col * (light_size)
+            light_y = panel_y + 10
+
+            # Draw the light (always white for active notes)
+            light_color = (255, 255, 255)  # White when on
+
+            pygame.draw.rect(
+                surface, light_color, (light_x, light_y, light_size, light_size)
+            )
 
 
 def main():
@@ -131,6 +189,9 @@ def main():
         "kl": OnsetDetector("KL"),
     }
 
+    # Initialize note visualizer
+    note_viz = NoteVisualizer()
+
     # Track time for smooth updates
     last_time = pygame.time.get_ticks()
 
@@ -162,6 +223,11 @@ def main():
             # Update volume from MQTT data
             if "volume" in latest_data:
                 volume = latest_data["volume"]
+
+            # Update note visualizer from MQTT data
+            if "notes" in latest_data:
+                notes = latest_data["notes"]
+                note_viz.update(notes)
 
         # Check if it's time for a blink transition
         if current_time >= next_transition_time:
@@ -253,6 +319,12 @@ def main():
             onset_detectors[key].render(
                 screen, small_font, col_width + 40, y_pos, col_width - 80, current_time
             )
+
+        # Draw note visualizer in the bottom part of the screen
+        note_viz_y = (
+            detector_y + max(len(left_col), len(right_col)) * detector_height + 20
+        )
+        note_viz.render(screen, font, 40, note_viz_y, WIDTH - 80, 200)
 
         # Display MQTT connection status
         status_text = "Connected" if latest_data else "No MQTT data"
