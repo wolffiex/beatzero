@@ -114,10 +114,14 @@ class NoteVisualizer:
 
         # Calculate light size to fit many possible notes
         # We'll support up to 128 possible MIDI notes (0-127)
-        light_size = 8
-        max_notes_per_row = (width - 20) // (light_size)
+        light_size = 8  # Each light is 8x8 pixels
 
-        # Clean up old notes that have expired
+        # Calculate how many note indicators can fit in one row
+        # This determines our wrapping point for displaying notes
+        max_notes_per_row = (width - 20) // light_size
+
+        # Remove notes that have been visible for longer than activation_duration
+        # This creates the brief flashing effect, similar to onset detectors
         notes_to_remove = []
         for note, timestamp in self.active_note_times.items():
             if current_time - timestamp > self.activation_duration:
@@ -126,16 +130,21 @@ class NoteVisualizer:
         for note in notes_to_remove:
             self.active_note_times.pop(note)
 
-        # Draw all active notes
+        # Draw all active notes (still within their activation window)
         for midi_note in self.active_note_times:
-            # Calculate position in the grid
+            # Map MIDI note number to a horizontal position using modulo
+            # This wrapping approach means:
+            # - Each MIDI note gets assigned to a specific column
+            # - Notes that differ by max_notes_per_row wrap to the same position
+            # - Notes that are 12 semitones apart (an octave) will be in similar
+            #   relative positions if max_notes_per_row is not divisible by 12
             col = midi_note % max_notes_per_row
 
-            # Calculate light position
-            light_x = x + 10 + col * (light_size)
+            # Convert the column position to actual pixel coordinates
+            light_x = x + 10 + col * light_size
             light_y = panel_y + 10
 
-            # Draw the light (always white for active notes)
+            # All active notes are shown in white
             light_color = (255, 255, 255)  # White when on
 
             pygame.draw.rect(
