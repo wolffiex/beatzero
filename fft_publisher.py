@@ -83,8 +83,10 @@ smoothing_factor = 0.2  # Higher = more smoothing, must be < 1.0
 # Volume-based gain adjustment
 volume_history = []
 MAX_VOLUME_HISTORY = 100  # ~1 second at ~100 frames per second
-GAIN_THRESHOLD = 0.02  # Base threshold for gain adjustment
-gain_multiplier = 1.0  # Default gain
+GAIN_THRESHOLD = 0.03  # Base threshold for gain adjustment
+MAX_GAIN = 0.8  # Maximum gain to prevent pegging at 1.0
+MIN_GAIN = 0.2  # Minimum gain level
+gain_multiplier = 0.5  # Start with a moderate gain
 
 
 def connect_mqtt():
@@ -209,13 +211,37 @@ try:
         # Lower volume = lower gain multiplier (makes display less active)
         # Higher volume = higher gain multiplier (makes display more responsive)
         if avg_volume < GAIN_THRESHOLD:
-            # Calculate a gain that scales with volume (approaches 0.2 at very low volumes)
-            target_gain = 0.2 + (avg_volume / GAIN_THRESHOLD) * 0.8
+            # Calculate a gain that scales with volume (approaches MIN_GAIN at very low volumes)
+            target_gain = MIN_GAIN + (avg_volume / GAIN_THRESHOLD) * (
+                MAX_GAIN - MIN_GAIN
+            )
+            # Apply a faster reduction rate when volume is very low
+            reduction_factor = 0.80 if avg_volume < (GAIN_THRESHOLD * 0.5) else 0.95
             # Smooth transition to avoid sudden changes
-            gain_multiplier = 0.95 * gain_multiplier + 0.05 * target_gain
+            gain_multiplier = (
+                reduction_factor * gain_multiplier
+                + (1 - reduction_factor) * target_gain
+            )
         else:
-            # For normal/loud volumes, gradually return to normal gain
-            gain_multiplier = min(1.0, gain_multiplier * 1.05)
+            # For normal/loud volumes, gradually approach MAX_GAIN
+            # but at a slower rate to prevent rapid jumps
+            old_gain = gain_multiplier
+
+            # Calculate how close to MAX_GAIN we want to be based on volume
+            volume_factor = min(
+                1.0, (avg_volume - GAIN_THRESHOLD) / (GAIN_THRESHOLD * 2)
+            )
+            target_gain = MIN_GAIN + (MAX_GAIN - MIN_GAIN) * (0.5 + volume_factor * 0.5)
+
+            # Limit the maximum change per cycle
+            max_change = 0.01
+            if target_gain > old_gain:
+                new_gain = min(target_gain, old_gain + max_change)
+            else:
+                new_gain = max(target_gain, old_gain - max_change)
+
+            # Ensure gain stays within limits
+            gain_multiplier = max(MIN_GAIN, min(MAX_GAIN, new_gain))
 
         # Apply window function to the signal
         windowed_signal = signal * hann_window
