@@ -77,8 +77,14 @@ note_detector.set_silence(-30)  # Less sensitive to quiet notes
 note_detector.set_minioi_ms(100)  # Larger minimum interval between notes
 
 # Smoothing for frequency band energies
-smoothed_band_energy = np.zeros(len(FREQ_BANDS))  # Now 7 bands instead of 8
+smoothed_band_energy = np.zeros(len(FREQ_BANDS))  # Now 8 bands
 smoothing_factor = 0.2  # Higher = more smoothing, must be < 1.0
+
+# Volume-based gain adjustment
+volume_history = []
+MAX_VOLUME_HISTORY = 100  # ~1 second at ~100 frames per second
+GAIN_THRESHOLD = 0.02  # Base threshold for gain adjustment
+gain_multiplier = 1.0  # Default gain
 
 
 def connect_mqtt():
@@ -153,6 +159,29 @@ try:
         audiobuffer = stream.read(BUFFER_SIZE, exception_on_overflow=False)
         signal = np.frombuffer(audiobuffer, dtype=np.float32)
 
+        # Calculate volume for gain adjustment
+        volume = float(np.sqrt(np.mean(signal**2)))
+
+        # Update volume history
+        volume_history.append(volume)
+        if len(volume_history) > MAX_VOLUME_HISTORY:
+            volume_history.pop(0)
+
+        # Calculate average volume over the last ~1 second
+        avg_volume = sum(volume_history) / len(volume_history)
+
+        # Dynamically adjust gain multiplier based on average volume
+        # Lower volume = lower gain multiplier (makes display less active)
+        # Higher volume = higher gain multiplier (makes display more responsive)
+        if avg_volume < GAIN_THRESHOLD:
+            # Calculate a gain that scales with volume (approaches 0.2 at very low volumes)
+            target_gain = 0.2 + (avg_volume / GAIN_THRESHOLD) * 0.8
+            # Smooth transition to avoid sudden changes
+            gain_multiplier = 0.95 * gain_multiplier + 0.05 * target_gain
+        else:
+            # For normal/loud volumes, gradually return to normal gain
+            gain_multiplier = min(1.0, gain_multiplier * 1.05)
+
         # Apply window function to the signal
         windowed_signal = signal * hann_window
 
@@ -170,6 +199,10 @@ try:
         # Calculate energy in each frequency band
         band_energy = calculate_band_energy(fft_data, freqs)
 
+        # Apply gain multiplier to band energy
+        # This makes the display less active during quiet periods
+        band_energy = [e * gain_multiplier for e in band_energy]
+
         # Apply smoothing to band energy
         smoothed_band_energy = smoothing_factor * smoothed_band_energy + (
             1 - smoothing_factor
@@ -184,9 +217,13 @@ try:
             is_beat = bool(detector(signal))
             descriptor = float(detector.get_descriptor())
             threshold = float(detector.get_threshold())
+
+            # Apply gain multiplier to descriptor values (makes visualization less active during quiet periods)
+            adjusted_descriptor = descriptor * gain_multiplier
+
             onset_data[method] = {
                 "is_beat": is_beat,
-                "descriptor": descriptor,
+                "descriptor": adjusted_descriptor,  # Using adjusted descriptor
                 "threshold": threshold,
             }
 
@@ -220,6 +257,8 @@ try:
             "tempo": {"is_beat": is_tempo_beat, "bpm": bpm},
             "note_detected": has_note,
             "volume": volume,
+            "avg_volume": avg_volume,
+            "gain_multiplier": gain_multiplier,
             "kick_detected": kick_detected,
             "hihat_detected": hihat_detected,
             "spectrum": {
@@ -243,7 +282,7 @@ try:
             # Format spectrum data for display
             spectrum_str = " ".join(f"{e:.2f}" for e in smoothed_band_energy)
             console.print(
-                f"[{timestamp}] BPM={bpm:.1f}, Kick={kick_detected}, HiHat={hihat_detected}, Spectrum=[{spectrum_str}]"
+                f"[{timestamp}] BPM={bpm:.1f}, Kick={kick_detected}, HiHat={hihat_detected}, Gain={gain_multiplier:.2f}, Vol={avg_volume:.4f}, Spectrum=[{spectrum_str}]"
             )
 
         # Small delay to reduce CPU usage

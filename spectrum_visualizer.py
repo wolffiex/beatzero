@@ -37,6 +37,13 @@ COLORS = {
 latest_data = None
 MAX_HISTORY = 200
 
+# Audio silence detection parameters
+SILENCE_THRESHOLD = 0.02  # Volume below this is considered silence
+volume_history = []
+MAX_VOLUME_HISTORY = 100  # ~1 second at 100 updates/sec
+is_silent = False
+gain_multiplier = 1.0  # Gain multiplier for non-silent mode
+
 
 class SpectrumVisualizer:
     def __init__(self, x, y, width, height):
@@ -577,12 +584,22 @@ def main():
             # Update onset detection visualizer
             onset_viz.update(latest_data)
 
-            # Display timestamp in top right corner
+            # Display timestamp and gain info in top right corner
             timestamp = datetime.fromisoformat(latest_data["timestamp"]).strftime(
                 "%H:%M:%S"
             )
-            ts_surface = small_font.render(f"Time: {timestamp}", True, (150, 150, 150))
-            screen.blit(ts_surface, (WIDTH - 150, 20))
+
+            # Add gain and volume info if available
+            gain_info = ""
+            if "gain_multiplier" in latest_data:
+                gain_info += f" | Gain: {latest_data['gain_multiplier']:.2f}"
+            if "avg_volume" in latest_data:
+                gain_info += f" | Vol: {latest_data['avg_volume']:.4f}"
+
+            ts_surface = small_font.render(
+                f"Time: {timestamp}{gain_info}", True, (150, 150, 150)
+            )
+            screen.blit(ts_surface, (WIDTH - 300, 20))
 
         # Draw visualization elements
         bpm_viz.draw(screen)
