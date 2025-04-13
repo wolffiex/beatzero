@@ -19,18 +19,18 @@ MQTT_PORT = 1883
 MQTT_TOPIC = "beatzero/spectrum_data"
 MQTT_CLIENT_ID = f"beatzero-spectrum-visualizer-{int(time.time())}"
 
-# Colors
+# Colors - all white for simplicity
 COLORS = {
-    "energy": (255, 50, 50),  # Red
-    "hfc": (255, 165, 0),  # Orange
-    "complex": (255, 255, 50),  # Yellow
-    "phase": (50, 255, 50),  # Green
-    "specflux": (50, 50, 255),  # Blue
-    "kick": (255, 0, 128),  # Pink
+    "energy": (255, 255, 255),  # White
+    "hfc": (255, 255, 255),  # White
+    "complex": (255, 255, 255),  # White
+    "phase": (255, 255, 255),  # White
+    "specflux": (255, 255, 255),  # White
+    "kick": (255, 255, 255),  # White
     "hihat": (255, 255, 255),  # White
-    "pitch": (128, 0, 255),  # Purple
-    "note": (0, 255, 255),  # Cyan
-    "bpm": (200, 200, 200),  # Light gray
+    "pitch": (255, 255, 255),  # White
+    "note": (255, 255, 255),  # White
+    "bpm": (255, 255, 255),  # White
 }
 
 # Initialize data storage
@@ -59,16 +59,20 @@ class SpectrumVisualizer:
             (5000, 8000),  # Ultra high (5-8kHz)
         ]
 
-        # Color gradient for visualization
+        # Using grayscale for all frequency bands (black to white)
         self.color_gradient = [
-            (50, 50, 200),  # Deep blue for low frequencies (Bass)
-            (100, 100, 255),  # Blue (Low-mids)
-            (50, 200, 255),  # Cyan (Mids)
-            (50, 255, 150),  # Green-cyan (Upper-mids)
-            (100, 255, 50),  # Green (Presence)
-            (255, 255, 50),  # Yellow (Brilliance)
-            (255, 150, 50),  # Orange (High 4-5kHz)
-            (255, 50, 50),  # Red for ultra high frequencies (5-8kHz)
+            (
+                255,
+                255,
+                255,
+            ),  # White for all frequencies - using same color for simplicity
+            (255, 255, 255),
+            (255, 255, 255),
+            (255, 255, 255),
+            (255, 255, 255),
+            (255, 255, 255),
+            (255, 255, 255),
+            (255, 255, 255),
         ]
 
         self.block_width = width // len(self.band_ranges)
@@ -257,8 +261,8 @@ class BPMVisualizer:
         blink_rect_width = self.width - label_width - 60
 
         if self.is_beat:
-            # Fully bright rectangle when on beat
-            blink_color = COLORS["bpm"]
+            # Fully bright rectangle when on beat - white
+            blink_color = (255, 255, 255)
 
             # Draw filled rectangle
             pygame.draw.rect(
