@@ -40,6 +40,51 @@ def on_message(client, userdata, msg):
         print(f"Error parsing message: {e}")
 
 
+class OnsetDetector:
+    def __init__(self, label):
+        self.label = label
+
+        # State management
+        self.active_time = 0
+
+        # Used to track the original detector name in MQTT data
+        if label.lower() == "high freq":
+            self.detector_name = "hfc"
+        elif label.lower() == "spectral":
+            self.detector_name = "specflux"
+        else:
+            self.detector_name = label.lower()
+
+    def activate(self, current_time):
+        self.active_time = current_time
+
+    def render(self, surface, font, x, y, width, current_time):
+        """Draw the detector at the given coordinates"""
+        # Draw label
+        label_surface = font.render(self.label, True, (200, 200, 200))
+        surface.blit(label_surface, (x, y))
+
+        # Calculate color based on intensity
+        active = current_time - self.active_time < 60
+        if active:
+            box_color = (200, 200, 200)
+        else:
+            box_color = (50, 50, 70)  # Dark gray when inactive
+
+        # Draw indicator box
+        box_x = x + width - 30
+        box_y = y
+        box_size = 20
+
+        pygame.draw.rect(surface, box_color, (box_x, box_y, box_size, box_size))
+
+        # Add border to box
+        pygame.draw.rect(
+            surface, (100, 100, 120), (box_x, box_y, box_size, box_size), 1
+        )
+        self.active = False
+
+
 def main():
     # Initialize Pygame
     pygame.init()
@@ -69,16 +114,28 @@ def main():
     bpm = 58
     volume = 0.7
     is_tempo_beat = False
-    timestamp = None
 
     # BPM blinker configuration
     blink_state = False  # Start with blinker off
     next_transition_time = 0
 
+    # Initialize onset detectors with different colors
+    onset_detectors = {
+        "energy": OnsetDetector("Energy"),
+        "hfc": OnsetDetector("High Freq"),
+        "complex": OnsetDetector("Complex"),
+        "phase": OnsetDetector("Phase"),
+        "specflux": OnsetDetector("Spectral"),
+    }
+
+    # Track time for smooth updates
+    last_time = pygame.time.get_ticks()
+
     # Main game loop
     running = True
     while running:
         current_time = pygame.time.get_ticks()
+        last_time = current_time
 
         # Process events
         for event in pygame.event.get():
@@ -93,6 +150,11 @@ def main():
             # Update BPM from MQTT data
             if "bpm" in latest_data:
                 bpm = latest_data["bpm"]
+
+            # Update onset detectors from MQTT data
+            for method in onset_detectors:
+                if method in latest_data and latest_data[method]:
+                    onset_detectors[method].activate(current_time)
 
             # Update volume from MQTT data
             if "volume" in latest_data:
@@ -156,16 +218,37 @@ def main():
                 ),
             )
 
-        # Display connection status and timestamp
-        if timestamp:
-            try:
-                formatted_time = datetime.fromisoformat(timestamp).strftime("%H:%M:%S")
-                time_text = small_font.render(
-                    f"Time: {formatted_time}", True, (150, 150, 150)
-                )
-                screen.blit(time_text, (WIDTH - 100, 20))
-            except:
-                pass
+        # Draw onset detectors section title
+        title_y = 60
+        onset_title = font.render("Onset Detectors", True, (200, 200, 200))
+        screen.blit(onset_title, (20, title_y))
+
+        # Draw onset detectors in two columns
+        detector_y = title_y + 30
+        detector_height = 25
+        col_width = WIDTH // 2
+
+        # Define column layout
+        left_col = [
+            "energy",
+            "complex",
+            "specflux",
+        ]
+        right_col = ["hfc", "phase"]
+
+        # Draw left column detectors
+        for i, key in enumerate(left_col):
+            y_pos = detector_y + i * detector_height
+            onset_detectors[key].render(
+                screen, small_font, 40, y_pos, col_width - 80, current_time
+            )
+
+        # Draw right column detectors
+        for i, key in enumerate(right_col):
+            y_pos = detector_y + i * detector_height
+            onset_detectors[key].render(
+                screen, small_font, col_width + 40, y_pos, col_width - 80, current_time
+            )
 
         # Display MQTT connection status
         status_text = "Connected" if latest_data else "No MQTT data"
