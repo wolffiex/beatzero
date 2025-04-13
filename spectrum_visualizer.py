@@ -124,15 +124,12 @@ class SpectrumVisualizer:
             if energy < 0.1:
                 # Much darker when inactive - almost completely black
                 color = (2, 2, 5)
+            elif energy < 0.3:
+                color = (75, 75, 55)
+            elif energy < 0.5:
+                color = (125, 125, 125)
             else:
-                # Scale color based on energy level but with stronger contrast
-                # Apply a non-linear scaling to make high values brighter and low values darker
-                energy_scaled = energy**2  # Square the value to increase contrast
-                color = (
-                    int(base_color[0] * energy_scaled),
-                    int(base_color[1] * energy_scaled),
-                    int(base_color[2] * energy_scaled),
-                )
+                color = (255, 255, 255)
 
             # Draw the frequency block
             pygame.draw.rect(surface, color, (x, block_y, block_size, block_size))
