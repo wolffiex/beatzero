@@ -393,7 +393,7 @@ def main():
 
         # Define column layout
         left_col = [
-            "energy",
+            # "energy",
             "complex",
             "specflux",
             "wphase",
