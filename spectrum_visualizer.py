@@ -45,9 +45,8 @@ class SpectrumVisualizer:
         self.font = pygame.font.Font(None, 24)
         
         # Store the FFT data
-        self.band_energy = [0.0] * 8  # Assuming 8 frequency bands
+        self.band_energy = [0.0] * 7  # 7 frequency bands (removed the lowest range)
         self.band_ranges = [
-            (20, 80),     # Sub-bass (very low)
             (80, 250),    # Bass
             (250, 500),   # Low-mids
             (500, 1000),  # Mids

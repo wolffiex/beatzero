@@ -20,9 +20,8 @@ MQTT_PORT = 1883
 MQTT_TOPIC = "beatzero/spectrum_data"
 MQTT_CLIENT_ID = f"beatzero-fft-publisher-{int(time.time())}"
 
-# Define frequency bands for analysis
+# Define frequency bands for analysis (removed sub-bass that's too low for most mics)
 FREQ_BANDS = [
-    (20, 80),  # Sub-bass (very low)
     (80, 250),  # Bass
     (250, 500),  # Low-mids
     (500, 1000),  # Mids
@@ -77,8 +76,8 @@ note_detector.set_silence(-30)  # Less sensitive to quiet notes
 note_detector.set_minioi_ms(100)  # Larger minimum interval between notes
 
 # Smoothing for frequency band energies
-smoothed_band_energy = np.zeros(len(FREQ_BANDS))
-smoothing_factor = 0.7  # Higher = more smoothing, must be < 1.0
+smoothed_band_energy = np.zeros(len(FREQ_BANDS))  # Now 7 bands instead of 8
+smoothing_factor = 0.2  # Higher = more smoothing, must be < 1.0
 
 
 def connect_mqtt():
@@ -201,15 +200,15 @@ try:
         # Calculate volume
         volume = float(np.sqrt(np.mean(signal**2)))
 
-        # Detect kick drum (using energy detector)
+        # Detect kick drum (using energy detector and bass range)
         kick_detected = bool(
             onset_data.get("energy", {}).get("is_beat", False)
-            and smoothed_band_energy[0] > 0.5  # Higher threshold for kick detection
+            and smoothed_band_energy[0] > 0.5  # Bass band (80-250Hz) for kick detection
         )
 
         # Detect hi-hat (using high frequency energy)
         hihat_detected = bool(
-            smoothed_band_energy[7] > 0.5
+            smoothed_band_energy[6] > 0.5  # Updated index to last band (4000-8000Hz)
             and onset_data.get("hfc", {}).get("is_beat", False)
         )
 
