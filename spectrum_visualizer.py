@@ -7,7 +7,7 @@ from datetime import datetime
 import numpy as np
 
 # Window setup
-WIDTH, HEIGHT = 1024, 600
+WIDTH, HEIGHT = 1024, 680  # Increased height for the BPM visualizer row
 FPS = 60
 BACKGROUND_COLOR = (10, 10, 20)
 GRID_COLOR = (30, 30, 40)
@@ -36,7 +36,6 @@ COLORS = {
 latest_data = None
 MAX_HISTORY = 200
 
-
 class SpectrumVisualizer:
     def __init__(self, x, y, width, height):
         self.x = x
@@ -44,41 +43,40 @@ class SpectrumVisualizer:
         self.width = width
         self.height = height
         self.font = pygame.font.Font(None, 24)
-
+        
         # Store the FFT data
         self.band_energy = [0.0] * 8  # Assuming 8 frequency bands
         self.band_ranges = [
-            (20, 80),  # Sub-bass (very low)
-            (80, 250),  # Bass
-            (250, 500),  # Low-mids
+            (20, 80),     # Sub-bass (very low)
+            (80, 250),    # Bass
+            (250, 500),   # Low-mids
             (500, 1000),  # Mids
-            (1000, 2000),  # Upper-mids
-            (2000, 3000),  # Presence
-            (3000, 4000),  # Brilliance
-            (4000, 8000),  # Air/Ultra high
+            (1000, 2000), # Upper-mids
+            (2000, 3000), # Presence
+            (3000, 4000), # Brilliance
+            (4000, 8000), # Air/Ultra high
         ]
-
+        
         # Color gradient for visualization
         self.color_gradient = [
-            (50, 50, 200),  # Deep blue for low frequencies
-            (100, 100, 255),  # Blue
-            (50, 200, 255),  # Cyan
-            (50, 255, 150),  # Green-cyan
-            (100, 255, 50),  # Green
-            (255, 255, 50),  # Yellow
-            (255, 150, 50),  # Orange
-            (255, 50, 50),  # Red for high frequencies
+            (50, 50, 200),     # Deep blue for low frequencies
+            (100, 100, 255),   # Blue
+            (50, 200, 255),    # Cyan
+            (50, 255, 150),    # Green-cyan
+            (100, 255, 50),    # Green
+            (255, 255, 50),    # Yellow
+            (255, 150, 50),    # Orange
+            (255, 50, 50),     # Red for high frequencies
         ]
-
+        
         self.block_width = width // len(self.band_ranges)
-        self.max_bar_height = height - 80  # Leave room for labels
-
+    
     def update(self, spectrum_data):
         if "band_energy" in spectrum_data:
             self.band_energy = spectrum_data["band_energy"]
         if "band_ranges" in spectrum_data:
             self.band_ranges = spectrum_data["band_ranges"]
-
+    
     def draw(self, surface):
         # Draw background
         pygame.draw.rect(
@@ -87,81 +85,206 @@ class SpectrumVisualizer:
         pygame.draw.rect(
             surface, (50, 50, 60), (self.x, self.y, self.width, self.height), 1
         )
-
+        
         # Draw title
         title = "Frequency Spectrum Analyzer"
         title_surface = self.font.render(title, True, (200, 200, 200))
         surface.blit(title_surface, (self.x + 10, self.y + 10))
-
-        # Draw grid lines (horizontal)
-        for i in range(5):
-            y_pos = self.y + 40 + (i * self.max_bar_height // 4)
-            pygame.draw.line(
-                surface,
-                GRID_COLOR,
-                (self.x + 5, y_pos),
-                (self.x + self.width - 5, y_pos),
-                1,
-            )
-
-            # Draw level label (0.0 - 1.0)
-            level = 1.0 - (i / 4)  # 1.0, 0.75, 0.5, 0.25, 0.0
-            level_label = self.font.render(f"{level:.1f}", True, (150, 150, 150))
-            surface.blit(level_label, (self.x + 5, y_pos - 15))
-
-        # Draw frequency bands
+        
+        # Calculate block size for frequency boxes (similar to onset detection)
+        block_size = min(self.block_width - 10, (self.height - 80) // 2)
+        block_y = self.y + 50  # Position after title
+        
+        # Draw frequency bands as illuminated blocks (similar to onset detection)
         for i, energy in enumerate(self.band_energy):
-            # Calculate bar dimensions
-            bar_width = self.block_width - 10
-            bar_height = int(energy * self.max_bar_height)
-
-            # Position
-            x = self.x + (i * self.block_width) + 5
-            y = self.y + 40 + self.max_bar_height - bar_height
-
-            # Get color from gradient with intensity based on energy
-            if energy < 0.05:
-                # Nearly black for very low energy
-                color = (5, 5, 10)
-            else:
-                base_color = (
-                    self.color_gradient[i]
-                    if i < len(self.color_gradient)
-                    else (200, 200, 200)
-                )
-
-                # Scale color based on energy level
-                color = (
-                    int(base_color[0] * energy),
-                    int(base_color[1] * energy),
-                    int(base_color[2] * energy),
-                )
-
-            # Draw bar
-            pygame.draw.rect(surface, color, (x, y, bar_width, bar_height))
-
-            # Draw bar border
-            pygame.draw.rect(surface, (100, 100, 120), (x, y, bar_width, bar_height), 1)
-
-            # Draw frequency label
-            min_freq, max_freq = (
-                self.band_ranges[i] if i < len(self.band_ranges) else (0, 0)
+            # Position the block
+            x = self.x + i * self.block_width + (self.block_width - block_size) // 2
+            
+            # Get base color from gradient
+            base_color = (
+                self.color_gradient[i]
+                if i < len(self.color_gradient)
+                else (200, 200, 200)
             )
+            
+            # Determine color based on energy level
+            if energy < 0.1:
+                # Much darker when inactive - almost completely black
+                color = (2, 2, 5)
+            else:
+                # Scale color based on energy level but with stronger contrast
+                # Apply a non-linear scaling to make high values brighter and low values darker
+                energy_scaled = energy ** 2  # Square the value to increase contrast
+                color = (
+                    int(base_color[0] * energy_scaled),
+                    int(base_color[1] * energy_scaled),
+                    int(base_color[2] * energy_scaled)
+                )
+            
+            # Draw the frequency block
+            pygame.draw.rect(
+                surface,
+                color,
+                (x, block_y, block_size, block_size)
+            )
+            
+            # Draw border around block
+            pygame.draw.rect(
+                surface, (100, 100, 120), (x, block_y, block_size, block_size), 1
+            )
+            
+            # Draw frequency label under block
+            min_freq, max_freq = self.band_ranges[i] if i < len(self.band_ranges) else (0, 0)
             if min_freq > 999:
-                label = f"{min_freq // 1000}k"
+                label = f"{min_freq//1000}k"
             else:
                 label = f"{min_freq}"
-
+                
             label_surface = pygame.font.Font(None, 18).render(
                 label, True, (150, 150, 150)
             )
+            label_width = label_surface.get_width()
+            
+            # Center the label under the block
             surface.blit(
                 label_surface,
-                (
-                    x + (bar_width - label_surface.get_width()) // 2,
-                    self.y + self.height - 20,
-                ),
+                (x + (block_size - label_width) // 2, block_y + block_size + 5)
             )
+
+class BPMVisualizer:
+    def __init__(self, x, y, width, height):
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+        self.font = pygame.font.Font(None, 36)  # Larger font for BPM
+        
+        # BPM tracking
+        self.current_bpm = 120.0
+        self.scaled_bpm = 30.0  # Target a much lower frequency for visualization (30 BPM)
+        self.is_beat = False
+        self.last_beat_time = 0
+        self.beat_interval = 2000  # in milliseconds (for 30 BPM)
+        
+        # Fixed flash duration (100ms)
+        self.flash_duration = 100  # milliseconds
+        
+        # For the BPM label
+        self.label_y = self.y + 10
+        
+        # For the blinking rectangle
+        self.blink_rect_y = self.y + 10
+        self.blink_rect_height = self.height - 20
+        
+        # For debugging
+        self.frame_count = 0
+        self.last_frame_time = 0
+        
+    def update(self, bpm_data):
+        current_time = pygame.time.get_ticks()
+        
+        # Update actual BPM from data
+        self.current_bpm = bpm_data["bpm"]
+        
+        # Calculate a scaled down BPM to make visualization more manageable
+        # Scale down to target ~30 BPM for visualization
+        bpm_scale_factor = 1
+        if self.current_bpm > 80:
+            bpm_scale_factor = 4  # Quarter time for fast tempos
+        elif self.current_bpm > 40:
+            bpm_scale_factor = 2  # Half time for moderate tempos
+            
+        self.scaled_bpm = self.current_bpm / bpm_scale_factor
+        
+        # Calculate beat interval in milliseconds based on scaled BPM
+        self.beat_interval = 60000 / self.scaled_bpm if self.scaled_bpm > 0 else 2000
+        
+        # If this is the first update or we don't have a last beat time
+        if self.last_beat_time == 0:
+            self.last_beat_time = current_time
+            
+        # Calculate time since last beat
+        time_since_last = current_time - self.last_beat_time
+        
+        # Debug frame rate
+        self.frame_count += 1
+        if current_time - self.last_frame_time > 1000:  # Every second
+            # Print frame rate for debugging
+            # print(f"FPS: {self.frame_count}, Beat interval: {self.beat_interval}ms")
+            self.frame_count = 0
+            self.last_frame_time = current_time
+        
+        # Check if we're due for a new beat based on the scaled BPM
+        if time_since_last >= self.beat_interval:
+            # Calculate how many beats we've missed (should generally be just 1)
+            beats_missed = int(time_since_last / self.beat_interval)
+            
+            # Update last beat time to be exactly on the beat grid
+            self.last_beat_time += beats_missed * self.beat_interval
+            
+            # We're on a beat
+            self.is_beat = True
+        else:
+            # Check if we're within the flash duration
+            self.is_beat = (time_since_last < self.flash_duration)
+            
+    def draw(self, surface):
+        # Draw background
+        pygame.draw.rect(
+            surface, (20, 20, 30), (self.x, self.y, self.width, self.height)
+        )
+        pygame.draw.rect(
+            surface, (50, 50, 60), (self.x, self.y, self.width, self.height), 1
+        )
+        
+        # Draw BPM label showing both actual and scaled BPM
+        bpm_text = f"BPM: {self.current_bpm:.1f} (Scaled: {self.scaled_bpm:.1f})"
+        bpm_label = self.font.render(bpm_text, True, (200, 200, 200))
+        surface.blit(bpm_label, (self.x + 10, self.label_y))
+        
+        # Draw blinking rectangle (right side of the BPM label)
+        label_width = bpm_label.get_width()
+        blink_rect_x = self.x + label_width + 40
+        blink_rect_width = self.width - label_width - 60
+        
+        if self.is_beat:
+            # Fully bright rectangle when on beat
+            blink_color = COLORS["bpm"]
+            
+            # Draw filled rectangle
+            pygame.draw.rect(
+                surface, 
+                blink_color, 
+                (blink_rect_x, self.blink_rect_y, blink_rect_width, self.blink_rect_height)
+            )
+            
+            # Draw a white border when blinking
+            pygame.draw.rect(
+                surface, 
+                (255, 255, 255), 
+                (blink_rect_x, self.blink_rect_y, blink_rect_width, self.blink_rect_height), 
+                2
+            )
+        else:
+            # Make this very dark when not blinking
+            pygame.draw.rect(
+                surface, 
+                (5, 5, 8), 
+                (blink_rect_x, self.blink_rect_y, blink_rect_width, self.blink_rect_height)
+            )
+            
+            # Very subtle dark outline
+            pygame.draw.rect(
+                surface, 
+                (10, 10, 15), 
+                (blink_rect_x, self.blink_rect_y, blink_rect_width, self.blink_rect_height), 
+                1
+            )
+            
+        # Draw beat timing info
+        ms_per_beat = f"{self.beat_interval:.0f}ms/beat"
+        timing_label = pygame.font.Font(None, 20).render(ms_per_beat, True, (150, 150, 150))
+        surface.blit(timing_label, (blink_rect_x + 5, self.blink_rect_y + 5))
 
 
 class OnsetDetectionVisualizer:
@@ -171,24 +294,16 @@ class OnsetDetectionVisualizer:
         self.width = width
         self.height = height
         self.font = pygame.font.Font(None, 24)
-
+        
         # Define onset methods
-        self.onset_methods = [
-            "energy",
-            "hfc",
-            "complex",
-            "phase",
-            "specflux",
-            "kick",
-            "hihat",
-        ]
+        self.onset_methods = ["energy", "hfc", "complex", "phase", "specflux", "kick", "hihat"]
         self.block_width = width // len(self.onset_methods)
-
+        
         # Store active methods with smoothing
         self.active_levels = {method: 0 for method in self.onset_methods}
-        self.decay_rate = 0.1  # Faster decay so lights go out quicker
-        self.rise_rate = 0.5  # Faster rise rate for more responsive visualization
-
+        self.decay_rate = 0.1   # Faster decay so lights go out quicker
+        self.rise_rate = 0.5    # Faster rise rate for more responsive visualization
+        
         # Labels and positions
         self.labels = {
             "energy": "Energy",
@@ -215,7 +330,7 @@ class OnsetDetectionVisualizer:
                     normalized_intensity = descriptor / threshold
                 else:
                     normalized_intensity = 0
-
+                
                 if is_beat:
                     # On beat detection, go to full brightness immediately
                     self.active_levels[method] = 1.0
@@ -224,16 +339,14 @@ class OnsetDetectionVisualizer:
                     # This creates more contrast between active and inactive
                     if normalized_intensity > 0.7:
                         target_level = min(0.5, normalized_intensity - 0.7)
-                        self.active_levels[method] = max(
-                            self.active_levels[method], target_level
-                        )
+                        self.active_levels[method] = max(self.active_levels[method], target_level)
                     else:
                         # Quickly fade out low levels
                         self.active_levels[method] -= self.decay_rate * 2
-
+                
                 # Apply decay - always fade out over time
                 self.active_levels[method] -= self.decay_rate
-
+                
                 # Clamp values
                 self.active_levels[method] = max(
                     0, min(1.0, self.active_levels[method])
@@ -274,58 +387,58 @@ class OnsetDetectionVisualizer:
         title = "Onset Detection Methods"
         title_surface = self.font.render(title, True, (200, 200, 200))
         surface.blit(title_surface, (self.x + 10, self.y + 10))
-
+        
         # Calculate dimensions for blocks
         block_size = min(self.block_width - 10, (self.height - 80) // 2)
         block_y = self.y + 50  # Position after title
-
+        
         # Draw blocks for each detection method
         for i, method in enumerate(self.onset_methods):
             x = self.x + i * self.block_width + (self.block_width - block_size) // 2
-
+            
             # Get base color for this method
             base_color = COLORS.get(
                 method, (200, 200, 200)
             )  # Default to light gray if not found
-
+            
             # Calculate brightness based on activity level
             activity = self.active_levels[method]
-
-            if activity < 0.05:
-                # Nearly black when not active
-                block_color = (5, 5, 10)
+            
+            if activity < 0.1:
+                # Almost completely black when not active (even darker than before)
+                block_color = (1, 1, 3)
             else:
-                # Scale color based on activity
-                scaled_r = int(base_color[0] * activity)
-                scaled_g = int(base_color[1] * activity)
-                scaled_b = int(base_color[2] * activity)
+                # Apply non-linear scaling for stronger contrast
+                activity_scaled = activity ** 1.5  # Power of 1.5 for contrast
+                scaled_r = int(base_color[0] * activity_scaled)
+                scaled_g = int(base_color[1] * activity_scaled)
+                scaled_b = int(base_color[2] * activity_scaled)
                 block_color = (scaled_r, scaled_g, scaled_b)
-
+            
             # Draw the square block
             pygame.draw.rect(
                 surface,
                 block_color,
                 (x, block_y, block_size, block_size),
             )
-
+            
             # Draw border
             pygame.draw.rect(
                 surface, (100, 100, 120), (x, block_y, block_size, block_size), 1
             )
-
+            
             # Draw label
             label = self.labels.get(method, method)
             label_surface = pygame.font.Font(None, 18).render(
                 label, True, (150, 150, 150)
             )
             label_width = label_surface.get_width()
-
+            
             # Center the label under the block
             surface.blit(
                 label_surface,
-                (x + (block_size - label_width) // 2, block_y + block_size + 5),
+                (x + (block_size - label_width) // 2, block_y + block_size + 5)
             )
-
 
 # MQTT callbacks
 def on_connect(client, userdata, flags, rc):
@@ -337,17 +450,15 @@ def on_connect(client, userdata, flags, rc):
     else:
         print(f"Failed to connect to MQTT broker with code: {rc}")
 
-
 def on_message(client, userdata, msg):
     """Callback for when a message is received from the broker"""
     global latest_data
-
+    
     try:
         data = json.loads(msg.payload.decode())
         latest_data = data
     except Exception as e:
         print(f"Error parsing message: {e}")
-
 
 def main():
     # Initialize Pygame
@@ -371,13 +482,17 @@ def main():
         return
 
     # Initialize visualization elements
-    row_height = HEIGHT // 2 - 20  # Height for each row with some margin
-
-    # Row 1: Spectrum visualizer
-    spectrum_viz = SpectrumVisualizer(20, 20, WIDTH - 40, row_height)
-
-    # Row 2: Onset detection visualizer
-    onset_viz = OnsetDetectionVisualizer(20, row_height + 40, WIDTH - 40, row_height)
+    bpm_row_height = 60  # Height for the BPM visualizer row
+    main_row_height = (HEIGHT - bpm_row_height - 60) // 2  # Height for the main rows
+    
+    # Row 0: BPM visualizer (top row)
+    bpm_viz = BPMVisualizer(20, 20, WIDTH - 40, bpm_row_height)
+    
+    # Row 1: Spectrum visualizer (middle row)
+    spectrum_viz = SpectrumVisualizer(20, bpm_row_height + 30, WIDTH - 40, main_row_height)
+    
+    # Row 2: Onset detection visualizer (bottom row)
+    onset_viz = OnsetDetectionVisualizer(20, bpm_row_height + main_row_height + 40, WIDTH - 40, main_row_height)
 
     # Font for on-screen info
     font = pygame.font.Font(None, 32)
@@ -399,26 +514,26 @@ def main():
 
         # Update visualizations if new data is available
         if latest_data:
+            # Update BPM visualizer
+            if "tempo" in latest_data:
+                bpm_viz.update(latest_data["tempo"])
+                
             # Update spectrum visualizer
             if "spectrum" in latest_data:
                 spectrum_viz.update(latest_data["spectrum"])
-
+            
             # Update onset detection visualizer
             onset_viz.update(latest_data)
-
-            # Display current BPM if available
-            bpm_text = f"BPM: {latest_data['tempo']['bpm']:.1f}"
-            bpm_surface = font.render(bpm_text, True, COLORS["bpm"])
-            screen.blit(bpm_surface, (WIDTH - 150, 20))
-
-            # Display timestamp
+            
+            # Display timestamp in top right corner
             timestamp = datetime.fromisoformat(latest_data["timestamp"]).strftime(
                 "%H:%M:%S"
             )
             ts_surface = small_font.render(f"Time: {timestamp}", True, (150, 150, 150))
-            screen.blit(ts_surface, (WIDTH - 150, 60))
+            screen.blit(ts_surface, (WIDTH - 150, 20))
 
         # Draw visualization elements
+        bpm_viz.draw(screen)
         spectrum_viz.draw(screen)
         onset_viz.draw(screen)
 
@@ -432,7 +547,6 @@ def main():
     client.loop_stop()
     client.disconnect()
     pygame.quit()
-
 
 if __name__ == "__main__":
     main()
