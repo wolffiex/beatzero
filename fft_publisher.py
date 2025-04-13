@@ -120,8 +120,10 @@ def publish_data(data):
 
 
 def calculate_band_energy(fft_data, freqs):
-    """Calculate energy in each frequency band"""
+    """Calculate energy in each frequency band with adaptive scaling"""
     band_energy = []
+    # Calculate raw energies first to determine adaptive scaling
+    raw_energies = []
 
     for low_freq, high_freq in FREQ_BANDS:
         # Find indices corresponding to this frequency band
@@ -130,11 +132,24 @@ def calculate_band_energy(fft_data, freqs):
         if len(indices) > 0:
             # Calculate average energy in this band
             energy = np.mean(np.abs(fft_data[indices]))
-            # Apply some normalization to get a reasonable range (this might need tuning)
-            energy = min(1.0, energy * 5.0)  # Assuming energy typically < 0.2
-            band_energy.append(float(energy))
+            raw_energies.append(energy)
         else:
-            band_energy.append(0.0)
+            raw_energies.append(0.0)
+            
+    # Calculate adaptive scaling factor based on maximum energy
+    # Only scale if we have non-zero energy
+    max_energy = max(raw_energies) if raw_energies else 0
+    if max_energy > 0:
+        # Scale so that the max value will be around 0.7-0.8 but not saturate
+        adaptive_scale = 0.8 / max_energy 
+    else:
+        adaptive_scale = 1.0
+        
+    # Apply the adaptive scaling to all bands
+    for energy in raw_energies:
+        # Apply scaling and ensure we don't exceed 1.0
+        scaled_energy = min(1.0, energy * adaptive_scale)
+        band_energy.append(float(scaled_energy))
 
     return band_energy
 
@@ -238,7 +253,7 @@ try:
         # Calculate volume
         volume = float(np.sqrt(np.mean(signal**2)))
 
-        # Detect kick drum (using energy detector and bass range)
+        # Detect kick drum (using energy detector and bass band)
         kick_detected = bool(
             onset_data.get("energy", {}).get("is_beat", False)
             and smoothed_band_energy[0] > 0.5  # Bass band (80-250Hz) for kick detection
@@ -276,8 +291,8 @@ try:
             or hihat_detected
             or any(data["is_beat"] for data in onset_data.values())
             or any(
-                e > 0.7 for e in smoothed_band_energy
-            )  # Only report higher energy events
+                e > 0.65 for e in smoothed_band_energy
+            )  # Match our detection thresholds
         ):
             # Format spectrum data for display
             spectrum_str = " ".join(f"{e:.2f}" for e in smoothed_band_energy)
