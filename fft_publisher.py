@@ -20,13 +20,12 @@ MQTT_PORT = 1883
 MQTT_TOPIC = "beatzero/spectrum_data"
 MQTT_CLIENT_ID = f"beatzero-fft-publisher-{int(time.time())}"
 
-# Define frequency bands for analysis (split high frequencies into two bands)
+# Define frequency bands for analysis
 FREQ_BANDS = [
     (80, 250),  # Bass
     (250, 500),  # Low-mids
     (500, 1000),  # Mids
-    (1000, 2000),  # Upper-mids
-    (2000, 3000),  # Presence
+    (1000, 3000),  # Upper-mids/Presence (combined 1k-3k range)
     (3000, 4000),  # Brilliance
     (4000, 5000),  # High (4-5kHz)
     (5000, 8000),  # Ultra high (5-8kHz)
@@ -77,7 +76,7 @@ note_detector.set_silence(-30)  # Less sensitive to quiet notes
 note_detector.set_minioi_ms(100)  # Larger minimum interval between notes
 
 # Smoothing for frequency band energies
-smoothed_band_energy = np.zeros(len(FREQ_BANDS))  # Now 8 bands
+smoothed_band_energy = np.zeros(len(FREQ_BANDS))  # Now 7 bands after combining 1k-3k
 smoothing_factor = 0.2  # Higher = more smoothing, must be < 1.0
 
 # Volume-based gain adjustment
@@ -306,7 +305,7 @@ try:
 
         # Detect hi-hat (using the 4-8kHz ultra high frequency band)
         hihat_detected = bool(
-            smoothed_band_energy[6] > 0.7  # Ultra high band (4-8kHz)
+            smoothed_band_energy[5] > 0.7  # Ultra high band (4-8kHz)
             and onset_data.get("hfc", {}).get("is_beat", False)
         )
 

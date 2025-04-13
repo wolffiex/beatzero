@@ -54,13 +54,12 @@ class SpectrumVisualizer:
         self.font = pygame.font.Font(None, 24)
 
         # Store the FFT data
-        self.band_energy = [0.0] * 8  # 8 frequency bands
+        self.band_energy = [0.0] * 7  # 7 frequency bands after combining 1k-3k
         self.band_ranges = [
             (80, 250),  # Bass
             (250, 500),  # Low-mids
             (500, 1000),  # Mids
-            (1000, 2000),  # Upper-mids
-            (2000, 3000),  # Presence
+            (1000, 3000),  # Upper-mids/Presence (combined 1k-3k range)
             (3000, 4000),  # Brilliance
             (4000, 5000),  # High (4-5kHz)
             (5000, 8000),  # Ultra high (5-8kHz)
@@ -73,7 +72,6 @@ class SpectrumVisualizer:
                 255,
                 255,
             ),  # White for all frequencies - using same color for simplicity
-            (255, 255, 255),
             (255, 255, 255),
             (255, 255, 255),
             (255, 255, 255),
