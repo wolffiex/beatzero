@@ -90,7 +90,20 @@ class NoteVisualizer:
         # Store the 12 pitch classes with their activation times
         self.active_pitch_classes = {}  # {pitch_class (0-11): activation_time}
         self.activation_duration = 200
-        self.note_names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+        self.note_names = [
+            "C",
+            "C#",
+            "D",
+            "D#",
+            "E",
+            "F",
+            "F#",
+            "G",
+            "G#",
+            "A",
+            "A#",
+            "B",
+        ]
 
     def update(self, notes):
         # Add current time for each note, mapped to pitch class (0-11)
@@ -128,10 +141,10 @@ class NoteVisualizer:
         box_width = 30  # Fixed width for each box
         box_height = 25
         box_spacing = 5  # Space between boxes
-        
+
         # Calculate total width needed for all boxes
         total_boxes_width = (box_width * 12) + (box_spacing * 11)
-        
+
         # Calculate starting x to center all boxes in the panel
         start_x = x + ((width - total_boxes_width) // 2)
         box_y = panel_y + 7
@@ -139,16 +152,16 @@ class NoteVisualizer:
         # Draw all 12 pitch class boxes
         for pitch_class in range(12):
             box_x = start_x + (pitch_class * (box_width + box_spacing))
-            
+
             # Check if this pitch class is active
             is_active = pitch_class in self.active_pitch_classes
-            
+
             # Set box color based on activity
             if is_active:
                 box_color = (255, 255, 255)  # White when active
             else:
-                box_color = (40, 40, 50)     # Dark gray when inactive
-            
+                box_color = (40, 40, 50)  # Dark gray when inactive
+
             # Draw the box
             pygame.draw.rect(surface, box_color, (box_x, box_y, box_width, box_height))
 
@@ -158,7 +171,9 @@ class PitchVisualizer:
         # Store pitches with their activation times
         self.active_pitches = {}  # {pitch_value: activation_time}
         self.min_pitch = 50  # Min frequency in Hz - widened to prevent low-end clipping
-        self.max_pitch = 500  # Max frequency in Hz - widened to prevent high-end clipping
+        self.max_pitch = (
+            500  # Max frequency in Hz - widened to prevent high-end clipping
+        )
         self.fade_duration = 350  # Fade out duration in ms
 
     def activate(self, pitch, confidence, current_time):
@@ -189,43 +204,37 @@ class PitchVisualizer:
         for pitch in pitches_to_remove:
             self.active_pitches.pop(pitch)
 
-        # Create a separate surface for additive blending of pitch boxes
-        pitch_surface = pygame.Surface((width, panel_height), pygame.SRCALPHA)
-        pitch_surface.fill((0, 0, 0, 0))  # Transparent background
-
-        # Draw all active pitches with fading onto the pitch surface
+        # Draw all active pitches directly
         for pitch, activation_time in self.active_pitches.items():
-            # Calculate fade factor based on how long since activation
+            # Calculate fade factor based on time
             time_elapsed = current_time - activation_time
             fade_factor = 1.0 - (time_elapsed / self.fade_duration)
 
             # Clip pitch to our range
             clipped_pitch = max(self.min_pitch, min(self.max_pitch, pitch))
 
-            # Map pitch to position in the bar
+            # Map pitch to exact pixel position in the visualization area
+            usable_width = width - 20  # 10px padding on each side
             position_ratio = (clipped_pitch - self.min_pitch) / (
                 self.max_pitch - self.min_pitch
             )
-            box_x = int((position_ratio * (width - 20)))  # Relative to pitch_surface
+            center_x = int(x + 10 + (position_ratio * usable_width))
 
-            # Draw the pitch indicator box
-            box_size = 20
-            box_y = 5  # Relative to pitch_surface
+            # Set up the rectangle dimensions
+            rect_width = 10  # Fixed 20px width
+            rect_height = 20  # Fixed 20px height
+            rect_y = panel_y + (panel_height - rect_height) // 2  # Center vertically
 
-            # Apply fade to color (255 -> 0 as fade progresses)
-            color_value = int(
-                255 * fade_factor
-            )  # Lower base value for better additive effect
-            alpha_value = int(255 * fade_factor)
-            box_color = (color_value, color_value, color_value, alpha_value)
+            # Calculate color with fade effect
+            brightness = int(255 * fade_factor)
+            rect_color = (brightness, brightness, brightness)
 
-            # Draw rectangle to the surface (draw.rect doesn't support special_flags)
+            # Draw the rectangle centered on the pitch position
             pygame.draw.rect(
-                pitch_surface, box_color, (box_x, box_y, box_size, box_size)
+                surface,
+                rect_color,
+                (center_x - rect_width // 2, rect_y, rect_width, rect_height),
             )
-
-        # Blit the combined pitch surface onto the main surface with additive blending
-        surface.blit(pitch_surface, (x, panel_y), special_flags=pygame.BLEND_ADD)
 
 
 def main():
@@ -256,7 +265,6 @@ def main():
     # Default values when no MQTT data is available
     bpm = 58
     volume = 0.7
-    is_tempo_beat = False
 
     # BPM blinker configuration
     blink_state = False  # Start with blinker off
@@ -280,14 +288,10 @@ def main():
     # Initialize pitch visualizer
     pitch_viz = PitchVisualizer()
 
-    # Track time for smooth updates
-    last_time = pygame.time.get_ticks()
-
     # Main game loop
     running = True
     while running:
         current_time = pygame.time.get_ticks()
-        last_time = current_time
 
         # Process events
         for event in pygame.event.get():
