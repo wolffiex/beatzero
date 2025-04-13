@@ -353,33 +353,26 @@ def main():
         vol_text = font.render("Volume", True, (255, 255, 255))
         screen.blit(vol_text, (120, 20))
 
-        # Calculate how many volume bars to light based on volume level
-        volume_bars = 10
-        active_bars = int(volume * volume_bars)
+        # Draw volume as a single horizontal bar
+        volume_bar_width = 200  # 200px total width
+        volume_bar_height = 20
+        volume_bar_x = 190
+        volume_bar_y = 17
 
-        # Draw volume bars
-        bar_width = 10
-        bar_height = 20
-        bar_spacing = 2
-        bar_x_start = 190
+        # Draw background volume bar (empty)
+        pygame.draw.rect(
+            screen,
+            (50, 50, 70),  # Dark gray background
+            (volume_bar_x, volume_bar_y, volume_bar_width, volume_bar_height),
+        )
 
-        for i in range(volume_bars):
-            # Determine if this bar should be lit
-            if i < active_bars:
-                bar_color = (255, 255, 255)
-            else:
-                bar_color = (50, 50, 70)
-
-            # Draw the bar
+        # Draw filled portion based on volume (0-1 directly maps to 0-200px)
+        filled_width = int(volume * volume_bar_width)
+        if filled_width > 0:
             pygame.draw.rect(
                 screen,
-                bar_color,
-                (
-                    bar_x_start + i * (bar_width + bar_spacing),
-                    17,
-                    bar_width,
-                    bar_height,
-                ),
+                (255, 255, 255),  # White for filled portion
+                (volume_bar_x, volume_bar_y, filled_width, volume_bar_height),
             )
 
         # Draw onset detectors section title
