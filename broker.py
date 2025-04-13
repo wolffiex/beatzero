@@ -126,7 +126,8 @@ def process_audio_buffer(signal):
     # Check tempo detector
     is_tempo_beat = bool(tempo_detector(signal))
     bpm = float(tempo_detector.get_bpm())
-    data["tempo"] = {"is_beat": is_tempo_beat, "bpm": bpm}
+    data["bpm"] = bpm
+    data["tempo_beat"] = is_tempo_beat
 
     # Detect pitch
     pitch = float(pitch_detector(signal)[0])
@@ -163,8 +164,9 @@ def combine_packets(packets):
     result["onsets"] = onset_data
 
     # Combine tempo data (OR the is_beat, use latest BPM)
-    is_tempo_beat = any(packet["tempo"]["is_beat"] for packet in packets)
-    result["tempo"] = {"is_beat": is_tempo_beat, "bpm": packets[-1]["tempo"]["bpm"]}
+    is_tempo_beat = any(packet["is_tempo_beat"] for packet in packets)
+    result["bpm"] = packets[-1]["bpm"]
+    result["tempo_beat"] = is_tempo_beat
 
     # Use the latest pitch data
     result["pitch"] = packets[-1]["pitch"]
