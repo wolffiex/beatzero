@@ -6,7 +6,7 @@ import paho.mqtt.client as mqtt
 from datetime import datetime
 
 # Window setup
-WIDTH, HEIGHT = 600, 350
+WIDTH, HEIGHT = 600, 450  # Increased height to accommodate pitch visualizer
 FPS = 30
 BACKGROUND_COLOR = (10, 10, 20)
 
@@ -152,6 +152,58 @@ class NoteVisualizer:
             )
 
 
+class PitchVisualizer:
+    def __init__(self):
+        self.pitch = 0
+        self.confidence = 0
+        self.active_time = 0
+        self.min_pitch = 60  # Min frequency in Hz
+        self.max_pitch = 6000  # Max frequency in Hz - increased for higher pitches
+
+    def activate(self, pitch, confidence, current_time):
+        if confidence > 0.3:
+            self.pitch = pitch
+            self.confidence = confidence
+            self.active_time = current_time
+
+    def render(self, surface, font, x, y, width, current_time):
+        """Draw the pitch visualizer with a box that moves based on frequency"""
+        # Draw label
+        label_surface = font.render("Pitch", True, (200, 200, 200))
+        surface.blit(label_surface, (x, y))
+
+        # Draw background panel
+        panel_y = y + 30
+        panel_height = 30
+        pygame.draw.rect(surface, (20, 20, 30), (x, panel_y, width, panel_height))
+        pygame.draw.rect(surface, (50, 50, 60), (x, panel_y, width, panel_height), 1)
+
+        # Check if pitch is active (within the last 100ms)
+        active = current_time - self.active_time < 200
+
+        if active and self.pitch > 0:
+            # Clip pitch to our range
+            clipped_pitch = max(self.min_pitch, min(self.max_pitch, self.pitch))
+
+            # Map pitch to position in the bar (logarithmic scale works better for pitch)
+            # Convert frequency range to position in the bar
+            position_ratio = (clipped_pitch - self.min_pitch) / (
+                self.max_pitch - self.min_pitch
+            )
+            box_x = int(x + (position_ratio * (width - 20)))
+
+            # Draw the pitch indicator box
+            box_size = 20
+            box_y = panel_y + 5
+
+            box_color = (255, 255, 255)
+
+            pygame.draw.rect(surface, box_color, (box_x, box_y, box_size, box_size))
+            pygame.draw.rect(
+                surface, (100, 100, 255), (box_x, box_y, box_size, box_size), 1
+            )
+
+
 def main():
     # Initialize Pygame
     pygame.init()
@@ -201,6 +253,9 @@ def main():
     # Initialize note visualizer
     note_viz = NoteVisualizer()
 
+    # Initialize pitch visualizer
+    pitch_viz = PitchVisualizer()
+
     # Track time for smooth updates
     last_time = pygame.time.get_ticks()
 
@@ -237,6 +292,14 @@ def main():
             if "notes" in latest_data:
                 notes = latest_data["notes"]
                 note_viz.update(notes)
+
+            # Update pitch visualizer from MQTT data
+            if "pitch" in latest_data:
+                pitch_data = latest_data["pitch"]
+                if "value" in pitch_data and "confidence" in pitch_data:
+                    pitch_viz.activate(
+                        pitch_data["value"], pitch_data["confidence"], current_time
+                    )
 
         # Check if it's time for a blink transition
         if current_time >= next_transition_time:
@@ -334,6 +397,10 @@ def main():
             detector_y + max(len(left_col), len(right_col)) * detector_height + 20
         )
         note_viz.render(screen, font, 40, note_viz_y, WIDTH - 80, 200)
+
+        # Draw pitch visualizer below the note visualizer
+        pitch_viz_y = note_viz_y + 100
+        pitch_viz.render(screen, font, 40, pitch_viz_y, WIDTH - 80, current_time)
 
         # Display MQTT connection status
         status_text = "Connected" if latest_data else "No MQTT data"
