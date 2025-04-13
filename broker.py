@@ -27,8 +27,8 @@ FRAME_TIME = 1 / 30  # 33.3ms for 30fps
 # Set up Rich console
 console = Console()
 
-# Initialize MQTT client
-client = mqtt.Client(client_id=MQTT_CLIENT_ID)
+# Initialize MQTT client with API version 2
+client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=MQTT_CLIENT_ID)
 
 # Initialize PyAudio
 p = pyaudio.PyAudio()
@@ -162,8 +162,8 @@ def combine_packets(packets):
         onset_data[method] = is_beat
     result["onsets"] = onset_data
 
-    # Combine tempo data (OR the is_beat, use latest BPM)
-    is_tempo_beat = any(packet["is_tempo_beat"] for packet in packets)
+    # Combine tempo data (OR the tempo_beat, use latest BPM)
+    is_tempo_beat = any(packet["tempo_beat"] for packet in packets)
     result["bpm"] = packets[-1]["bpm"]
     result["tempo_beat"] = is_tempo_beat
 
