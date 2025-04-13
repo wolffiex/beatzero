@@ -7,7 +7,7 @@ from datetime import datetime
 import numpy as np
 
 # Window setup
-WIDTH, HEIGHT = 1024, 600
+WIDTH, HEIGHT = 1024, 800  # Increased height for additional visualizations
 FPS = 60
 BACKGROUND_COLOR = (10, 10, 20)
 GRID_COLOR = (30, 30, 40)
@@ -36,6 +36,18 @@ COLORS = {
 
 # Define onset methods
 ONSET_METHODS = ["energy", "hfc", "complex", "phase", "specflux"]
+
+# Define frequency bands
+FREQ_RANGES = [
+    (20, 80),  # Sub-bass (very low)
+    (80, 250),  # Bass
+    (250, 500),  # Low-mids
+    (500, 1000),  # Mids
+    (1000, 2000),  # Upper-mids
+    (2000, 3000),  # Presence
+    (3000, 4000),  # Brilliance
+    (4000, 8000),  # Air/Ultra high
+]
 
 # Initialize data storage
 latest_data = None
@@ -196,16 +208,48 @@ class TimeSeriesDisplay:
                 pygame.draw.lines(surface, self.line_color, False, scaled_points, 2)
 
 
-class SignalTable:
-    def __init__(self, x, y, width, height, row_height=30):
+class FrequencyBandVisualizer:
+    def __init__(self, x, y, width, height):
         self.x = x
         self.y = y
         self.width = width
         self.height = height
-        self.row_height = row_height
         self.font = pygame.font.Font(None, 24)
+        self.block_width = width // len(FREQ_RANGES)
 
-    def draw(self, surface, data_dict):
+        # Store active bands with smoothing
+        self.active_bands = [0] * len(FREQ_RANGES)  # Activity level for each band (0-1)
+        self.decay_rate = 0.05  # How quickly inactive bands fade out
+        self.rise_rate = 0.3  # How quickly active bands light up
+
+        self.note_detected = False
+        self.confidence = 0
+        self.active_idx = -1
+
+    def update(self, pitch, pitch_confidence, note_detected):
+        self.note_detected = note_detected
+        self.confidence = pitch_confidence
+        old_active = self.active_idx
+        self.active_idx = -1
+
+        # Find which frequency band the pitch falls into
+        for i, (min_freq, max_freq) in enumerate(FREQ_RANGES):
+            if min_freq <= pitch < max_freq:
+                self.active_idx = i
+                # Gradually increase active band brightness
+                self.active_bands[i] += self.rise_rate
+                if self.active_bands[i] > 1:
+                    self.active_bands[i] = 1
+                break
+
+        # Apply decay to all inactive bands
+        for i in range(len(self.active_bands)):
+            if i != self.active_idx:  # Not the active band
+                self.active_bands[i] -= self.decay_rate
+                if self.active_bands[i] < 0:
+                    self.active_bands[i] = 0
+
+    def draw(self, surface):
         # Draw background
         pygame.draw.rect(
             surface, (20, 20, 30), (self.x, self.y, self.width, self.height)
@@ -214,80 +258,66 @@ class SignalTable:
             surface, (50, 50, 60), (self.x, self.y, self.width, self.height), 1
         )
 
-        # Draw table header
-        header_color = (200, 200, 200)
-        pygame.draw.rect(
-            surface, (30, 30, 40), (self.x, self.y, self.width, self.row_height)
-        )
+        # Draw title
+        title = "Frequency Bands"
+        title_surface = self.font.render(title, True, (200, 200, 200))
+        surface.blit(title_surface, (self.x + 10, self.y + 10))
 
-        header_labels = ["Signal", "Value", "Min", "Max", "Avg"]
-        col_width = self.width / len(header_labels)
+        # Calculate dimensions for square blocks
+        block_size = min(self.block_width - 10, (self.height - 80) // 2)
+        block_y = self.y + 50  # Position after title
 
-        for i, label in enumerate(header_labels):
-            header_surface = self.font.render(label, True, header_color)
-            surface.blit(header_surface, (self.x + i * col_width + 10, self.y + 5))
+        # Draw frequency band labels
+        for i, (min_freq, max_freq) in enumerate(FREQ_RANGES):
+            x = self.x + i * self.block_width + (self.block_width - block_size) // 2
 
-        # Draw rows
-        row_y = self.y + self.row_height
-        for i, (key, values) in enumerate(data_dict.items()):
-            # Skip if no values
-            if not values:
-                continue
-
+            # Draw frequency label (only for some bands to avoid clutter)
             if i % 2 == 0:
-                pygame.draw.rect(
-                    surface, (25, 25, 35), (self.x, row_y, self.width, self.row_height)
+                label = f"{min_freq}"
+                label_surface = pygame.font.Font(None, 18).render(
+                    label, True, (150, 150, 150)
+                )
+                label_width = label_surface.get_width()
+                # Center the label under the block
+                surface.blit(
+                    label_surface,
+                    (x + (block_size - label_width) // 2, block_y + block_size + 5),
                 )
 
-            # Get signal color
-            signal_color = COLORS.get(key, (200, 200, 200))
+        # Draw the blocks
+        for i, (min_freq, max_freq) in enumerate(FREQ_RANGES):
+            x = self.x + i * self.block_width + (self.block_width - block_size) // 2
 
-            # Process values based on type
-            # For onset methods, values are tuples of (is_beat, descriptor)
-            if key in ["energy", "hfc", "complex", "phase", "specflux"]:
-                # Extract descriptor values for statistical calculations
-                descriptors = [v[1] for v in values]
-                current = descriptors[-1] if descriptors else 0
-                min_val = min(descriptors) if descriptors else 0
-                max_val = max(descriptors) if descriptors else 0
-                avg_val = sum(descriptors) / len(descriptors) if descriptors else 0
+            # Base color for this band
+            r, g, b = 50, 100, 200  # Base blue color
 
-                # Add beat indication to name
-                is_current_beat = values[-1][0] if values else False
-                display_key = f"{key} {'★' if is_current_beat else ''}"
-            else:
-                # For other metrics, values are simple numbers
-                current = values[-1] if values else 0
-                min_val = min(values) if values else 0
-                max_val = max(values) if values else 0
-                avg_val = sum(values) / len(values) if values else 0
-                display_key = key
+            # Calculate brightness based on smoothed activity level
+            activity = self.active_bands[i]
 
-            # Column 1: Signal name
-            name_surface = self.font.render(display_key, True, signal_color)
-            surface.blit(name_surface, (self.x + 10, row_y + 5))
+            # Change color if note detected for this band
+            if i == self.active_idx and self.note_detected and self.confidence > 0.4:
+                r, g, b = 50, 200, 255  # Bright cyan for notes
 
-            # Column 2: Current value
-            value_surface = self.font.render(f"{current:.3f}", True, (255, 255, 255))
-            surface.blit(value_surface, (self.x + col_width + 10, row_y + 5))
+            # Scale RGB based on activity (keeping some minimum brightness)
+            min_brightness = 0.2
+            scaled_r = int(r * (min_brightness + activity * (1 - min_brightness)))
+            scaled_g = int(g * (min_brightness + activity * (1 - min_brightness)))
+            scaled_b = int(b * (min_brightness + activity * (1 - min_brightness)))
 
-            # Column 3: Min value
-            min_surface = self.font.render(f"{min_val:.3f}", True, (150, 150, 150))
-            surface.blit(min_surface, (self.x + col_width * 2 + 10, row_y + 5))
+            # Draw the square block
+            pygame.draw.rect(
+                surface,
+                (scaled_r, scaled_g, scaled_b),
+                (x, block_y, block_size, block_size),
+            )
 
-            # Column 4: Max value
-            max_surface = self.font.render(f"{max_val:.3f}", True, (150, 150, 150))
-            surface.blit(max_surface, (self.x + col_width * 3 + 10, row_y + 5))
+            # Draw a border around the block
+            pygame.draw.rect(
+                surface, (100, 100, 120), (x, block_y, block_size, block_size), 1
+            )
 
-            # Column 5: Avg value
-            avg_surface = self.font.render(f"{avg_val:.3f}", True, (150, 150, 150))
-            surface.blit(avg_surface, (self.x + col_width * 4 + 10, row_y + 5))
 
-            row_y += self.row_height
-
-            # Stop if we run out of space
-            if row_y > self.y + self.height:
-                break
+# SignalTable class has been removed since we're using graphical displays instead
 
 
 # MQTT callbacks
@@ -476,8 +506,8 @@ def main():
         y_max=200,
     )
 
-    # Signal data table
-    signal_table = SignalTable(
+    # Frequency band visualizer
+    freq_band_viz = FrequencyBandVisualizer(
         WIDTH // 2 + 10, 10 + (onset_height + 10) * 4, onset_width, onset_height
     )
 
@@ -549,9 +579,16 @@ def main():
         # Draw BPM display
         bpm_display.draw(screen, history["bpm"])
 
-        # Draw signal data table
-        table_data = {key: values for key, values in history.items() if values}
-        signal_table.draw(screen, table_data)
+        # Update and draw frequency band visualizer
+        if latest_data:
+            freq_band_viz.update(
+                latest_data["pitch"]["value"],
+                latest_data["pitch"]["confidence"],
+                latest_data["note_detected"],
+            )
+        freq_band_viz.draw(screen)
+
+        # No longer using a signal data table - we've removed it since the graphs show this data
 
         # Display current BPM if available
         if latest_data:
@@ -565,12 +602,6 @@ def main():
             )
             ts_surface = small_font.render(f"Time: {timestamp}", True, (150, 150, 150))
             screen.blit(ts_surface, (WIDTH - 250, 50))
-
-            # Display note detection status
-            if latest_data["note_detected"]:
-                note_text = f"Note Detected: Yes"
-                note_surface = font.render(note_text, True, COLORS["note"])
-                screen.blit(note_surface, (WIDTH - 250, 90))
 
         # Update the display
         pygame.display.flip()
