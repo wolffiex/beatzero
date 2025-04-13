@@ -14,13 +14,17 @@ def main():
     pygame.display.set_caption("BeatZero Visualizer")
     clock = pygame.time.Clock()
 
-    # Setup font for BPM label
+    # Setup font for labels
     font = pygame.font.Font(None, 24)
 
+    # BPM blinker configuration
     bpm = 58
 
     blink_state = False  # Start with blinker off
     next_transition_time = 0
+
+    # Volume level (fixed for now)
+    volume = 0.7  # Range 0-1
 
     # Main game loop
     running = True
@@ -59,6 +63,39 @@ def main():
             blink_color = (50, 50, 70)  # Dark gray when off
 
         pygame.draw.rect(screen, blink_color, (75, 17, 20, 20))
+
+        # Draw Volume indicator
+        vol_text = font.render("Volume", True, (255, 255, 255))
+        screen.blit(vol_text, (120, 20))
+
+        # Calculate how many volume bars to light based on volume level
+        volume_bars = 10
+        active_bars = int(volume * volume_bars)
+
+        # Draw volume bars
+        bar_width = 10
+        bar_height = 20
+        bar_spacing = 2
+        bar_x_start = 190
+
+        for i in range(volume_bars):
+            # Determine if this bar should be lit
+            if i < active_bars:
+                bar_color = (255, 255, 255)
+            else:
+                bar_color = (50, 50, 70)
+
+            # Draw the bar
+            pygame.draw.rect(
+                screen,
+                bar_color,
+                (
+                    bar_x_start + i * (bar_width + bar_spacing),
+                    17,
+                    bar_width,
+                    bar_height,
+                ),
+            )
 
         # Update the display
         pygame.display.flip()
