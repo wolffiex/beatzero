@@ -136,8 +136,7 @@ def process_audio_buffer(signal):
 
     # Detect notes
     note_array = note_detector(signal)
-    has_note = bool(note_array.size > 0 and note_array[0] > 0)
-    data["note_detected"] = has_note
+    data["notes"] = note_array.tolist()  # Convert NumPy array to standard Python list
 
     # Calculate volume
     volume = float(np.sqrt(np.mean(signal**2)))
@@ -171,8 +170,11 @@ def combine_packets(packets):
     # Use the latest pitch data
     result["pitch"] = packets[-1]["pitch"]
 
-    # OR together note detection flags
-    result["note_detected"] = any(packet["note_detected"] for packet in packets)
+    # Combine all detected notes from all packets
+    combined_notes = set()
+    for packet in packets:
+        combined_notes.update(packet["notes"])
+    result["notes"] = list(combined_notes)
 
     # Use the latest volume
     result["volume"] = packets[-1]["volume"]
@@ -221,13 +223,6 @@ try:
             # Publish the combined packet
             if combined_packet:
                 publish_data(combined_packet)
-
-                # Console feedback (minimal to reduce CPU usage)
-                if any(data["is_beat"] for data in combined_packet["onsets"].values()):
-                    console.print(
-                        f"[{combined_packet['timestamp']}] Published beat detection data: "
-                        f"BPM={combined_packet['tempo']['bpm']:.1f}"
-                    )
 
             # Calculate next frame time (maintain even 30fps)
             next_frame += FRAME_TIME
