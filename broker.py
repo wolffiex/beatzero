@@ -136,7 +136,8 @@ def process_audio_buffer(signal):
 
     # Detect notes
     note_array = note_detector(signal)
-    data["notes"] = note_array.tolist()  # Convert NumPy array to standard Python list
+    # Filter out zeros using NumPy and convert to a list
+    data["notes"] = note_array[note_array != 0].tolist()
 
     # Calculate volume
     volume = float(np.sqrt(np.mean(signal**2)))
