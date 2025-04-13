@@ -15,7 +15,7 @@ SAMPLE_RATE = 44100
 CHANNELS = 1
 
 # MQTT parameters
-MQTT_BROKER = os.environ.get("MQTT_BROKER", "localhost")
+MQTT_BROKER = os.environ.get("MQTT_BROKER", "0.0.0.0")
 MQTT_PORT = 1883
 MQTT_TOPIC = "beatzero/spectrum_data"
 MQTT_CLIENT_ID = f"beatzero-fft-publisher-{int(time.time())}"
@@ -62,19 +62,19 @@ ONSET_METHODS = ["energy", "hfc", "complex", "phase", "specflux"]
 onset_detectors = {}
 for method in ONSET_METHODS:
     detector = aubio.onset(method, BUFFER_SIZE, BUFFER_SIZE, SAMPLE_RATE)
-    detector.set_threshold(0.1)
-    detector.set_silence(-70)
-    detector.set_minioi_ms(40)
+    detector.set_threshold(0.3)  # Higher threshold to reduce sensitivity
+    detector.set_silence(-60)    # Less sensitive to quiet sounds
+    detector.set_minioi_ms(80)   # Larger minimum interval between onsets
     onset_detectors[method] = detector
 
 # Initialize tempo detection
 tempo_detector = aubio.tempo("specdiff", BUFFER_SIZE, BUFFER_SIZE, SAMPLE_RATE)
-tempo_detector.set_threshold(0.2)
+tempo_detector.set_threshold(0.5)  # Higher threshold for tempo detection
 
 # Initialize note detection
 note_detector = aubio.notes("default", BUFFER_SIZE, BUFFER_SIZE, SAMPLE_RATE)
-note_detector.set_silence(-40)
-note_detector.set_minioi_ms(50)
+note_detector.set_silence(-30)  # Less sensitive to quiet notes
+note_detector.set_minioi_ms(100)  # Larger minimum interval between notes
 
 # Smoothing for frequency band energies
 smoothed_band_energy = np.zeros(len(FREQ_BANDS))
@@ -204,12 +204,12 @@ try:
         # Detect kick drum (using energy detector)
         kick_detected = bool(
             onset_data.get("energy", {}).get("is_beat", False)
-            and smoothed_band_energy[0] > 0.3
+            and smoothed_band_energy[0] > 0.5  # Higher threshold for kick detection
         )
 
         # Detect hi-hat (using high frequency energy)
         hihat_detected = bool(
-            smoothed_band_energy[7] > 0.3
+            smoothed_band_energy[7] > 0.5
             and onset_data.get("hfc", {}).get("is_beat", False)
         )
 
@@ -236,7 +236,7 @@ try:
             kick_detected
             or hihat_detected
             or any(data["is_beat"] for data in onset_data.values())
-            or any(e > 0.5 for e in smoothed_band_energy)
+            or any(e > 0.7 for e in smoothed_band_energy)  # Only report higher energy events
         ):
             # Format spectrum data for display
             spectrum_str = " ".join(f"{e:.2f}" for e in smoothed_band_energy)
