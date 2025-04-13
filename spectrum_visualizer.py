@@ -119,12 +119,23 @@ class SpectrumVisualizer:
             x = self.x + (i * self.block_width) + 5
             y = self.y + 40 + self.max_bar_height - bar_height
 
-            # Get color from gradient
-            color = (
-                self.color_gradient[i]
-                if i < len(self.color_gradient)
-                else (200, 200, 200)
-            )
+            # Get color from gradient with intensity based on energy
+            if energy < 0.05:
+                # Nearly black for very low energy
+                color = (5, 5, 10)
+            else:
+                base_color = (
+                    self.color_gradient[i]
+                    if i < len(self.color_gradient)
+                    else (200, 200, 200)
+                )
+
+                # Scale color based on energy level
+                color = (
+                    int(base_color[0] * energy),
+                    int(base_color[1] * energy),
+                    int(base_color[2] * energy),
+                )
 
             # Draw bar
             pygame.draw.rect(surface, color, (x, y, bar_width, bar_height))
@@ -175,8 +186,8 @@ class OnsetDetectionVisualizer:
 
         # Store active methods with smoothing
         self.active_levels = {method: 0 for method in self.onset_methods}
-        self.decay_rate = 0.05
-        self.rise_rate = 0.3
+        self.decay_rate = 0.1  # Faster decay so lights go out quicker
+        self.rise_rate = 0.5  # Faster rise rate for more responsive visualization
 
         # Labels and positions
         self.labels = {
@@ -199,26 +210,28 @@ class OnsetDetectionVisualizer:
                 is_beat = data["onsets"][method]["is_beat"]
 
                 # Calculate normalized intensity - scale it relative to threshold
-                normalized_intensity = descriptor / threshold if threshold > 0 else 0
-
-                # Boost intensity if it's an actual beat
-                if is_beat:
-                    # Give a boost when a beat is detected
-                    intensity_boost = 1.0
-                    self.active_levels[method] = max(
-                        self.active_levels[method],
-                        normalized_intensity + intensity_boost,
-                    )
+                # Avoid division by very small values
+                if threshold > 0.01:
+                    normalized_intensity = descriptor / threshold
                 else:
-                    # Smoothly approach the normalized intensity
-                    target_level = min(
-                        0.8, normalized_intensity
-                    )  # Cap non-beat signals at 0.8
-                    self.active_levels[method] += (
-                        target_level - self.active_levels[method]
-                    ) * self.rise_rate
+                    normalized_intensity = 0
 
-                # Apply decay - always decay, but from whatever level we're at
+                if is_beat:
+                    # On beat detection, go to full brightness immediately
+                    self.active_levels[method] = 1.0
+                else:
+                    # For non-beats, only show if intensity is above 70% of threshold
+                    # This creates more contrast between active and inactive
+                    if normalized_intensity > 0.7:
+                        target_level = min(0.5, normalized_intensity - 0.7)
+                        self.active_levels[method] = max(
+                            self.active_levels[method], target_level
+                        )
+                    else:
+                        # Quickly fade out low levels
+                        self.active_levels[method] -= self.decay_rate * 2
+
+                # Apply decay - always fade out over time
                 self.active_levels[method] -= self.decay_rate
 
                 # Clamp values
@@ -233,18 +246,18 @@ class OnsetDetectionVisualizer:
 
         # Update kick and hihat with direct data (now based on spectrum energy)
         if data["kick_detected"]:
-            self.active_levels["kick"] = 1.0
+            self.active_levels["kick"] = 1.0  # Full brightness on detection
         else:
-            self.active_levels["kick"] -= self.decay_rate * 2  # Faster decay for kicks
+            # Very fast decay for kicks - they should be short and punchy
+            self.active_levels["kick"] -= self.decay_rate * 4
             if self.active_levels["kick"] < 0:
                 self.active_levels["kick"] = 0
 
         if data["hihat_detected"]:
-            self.active_levels["hihat"] = 1.0
+            self.active_levels["hihat"] = 1.0  # Full brightness on detection
         else:
-            self.active_levels["hihat"] -= (
-                self.decay_rate * 3
-            )  # Even faster decay for hihats
+            # Extremely fast decay for hi-hats - they should be very short
+            self.active_levels["hihat"] -= self.decay_rate * 6
             if self.active_levels["hihat"] < 0:
                 self.active_levels["hihat"] = 0
 
@@ -277,21 +290,21 @@ class OnsetDetectionVisualizer:
 
             # Calculate brightness based on activity level
             activity = self.active_levels[method]
-            min_brightness = 0.2
-            scaled_r = int(
-                base_color[0] * (min_brightness + activity * (1 - min_brightness))
-            )
-            scaled_g = int(
-                base_color[1] * (min_brightness + activity * (1 - min_brightness))
-            )
-            scaled_b = int(
-                base_color[2] * (min_brightness + activity * (1 - min_brightness))
-            )
+
+            if activity < 0.05:
+                # Nearly black when not active
+                block_color = (5, 5, 10)
+            else:
+                # Scale color based on activity
+                scaled_r = int(base_color[0] * activity)
+                scaled_g = int(base_color[1] * activity)
+                scaled_b = int(base_color[2] * activity)
+                block_color = (scaled_r, scaled_g, scaled_b)
 
             # Draw the square block
             pygame.draw.rect(
                 surface,
-                (scaled_r, scaled_g, scaled_b),
+                block_color,
                 (x, block_y, block_size, block_size),
             )
 

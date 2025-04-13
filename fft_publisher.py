@@ -62,9 +62,9 @@ ONSET_METHODS = ["energy", "hfc", "complex", "phase", "specflux"]
 onset_detectors = {}
 for method in ONSET_METHODS:
     detector = aubio.onset(method, BUFFER_SIZE, BUFFER_SIZE, SAMPLE_RATE)
-    detector.set_threshold(0.3)  # Higher threshold to reduce sensitivity
-    detector.set_silence(-60)    # Less sensitive to quiet sounds
-    detector.set_minioi_ms(80)   # Larger minimum interval between onsets
+    detector.set_threshold(0.5)  # Higher threshold to reduce false positives
+    detector.set_silence(-50)  # Less sensitive to quiet sounds
+    detector.set_minioi_ms(100)  # Larger minimum interval between onsets (100ms)
     onset_detectors[method] = detector
 
 # Initialize tempo detection
@@ -236,7 +236,9 @@ try:
             kick_detected
             or hihat_detected
             or any(data["is_beat"] for data in onset_data.values())
-            or any(e > 0.7 for e in smoothed_band_energy)  # Only report higher energy events
+            or any(
+                e > 0.7 for e in smoothed_band_energy
+            )  # Only report higher energy events
         ):
             # Format spectrum data for display
             spectrum_str = " ".join(f"{e:.2f}" for e in smoothed_band_energy)
