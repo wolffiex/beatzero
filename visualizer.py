@@ -126,6 +126,9 @@ def main():
         "complex": OnsetDetector("Complex"),
         "phase": OnsetDetector("Phase"),
         "specflux": OnsetDetector("Spectral"),
+        "wphase": OnsetDetector("W-Phase"),
+        "mkl": OnsetDetector("MKL"),
+        "kl": OnsetDetector("KL"),
     }
 
     # Track time for smooth updates
@@ -233,8 +236,9 @@ def main():
             "energy",
             "complex",
             "specflux",
+            "wphase",
         ]
-        right_col = ["hfc", "phase"]
+        right_col = ["hfc", "phase", "mkl", "kl"]
 
         # Draw left column detectors
         for i, key in enumerate(left_col):
