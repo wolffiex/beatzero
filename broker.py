@@ -66,13 +66,14 @@ for method in ONSET_METHODS:
     onset_detectors[method] = detector
 
 # Initialize pitch detection
-pitch_detector = aubio.pitch("default", BUFFER_SIZE, HOP_SIZE, SAMPLE_RATE)
+pitch_detector = aubio.pitch("yin", BUFFER_SIZE, HOP_SIZE, SAMPLE_RATE)
 pitch_detector.set_unit("Hz")
-pitch_detector.set_silence(-40)
+pitch_detector.set_silence(-60)
 
 # Initialize tempo detection
-tempo_detector = aubio.tempo("default", BUFFER_SIZE, HOP_SIZE, SAMPLE_RATE)
+tempo_detector = aubio.tempo("specdiff", BUFFER_SIZE, HOP_SIZE, SAMPLE_RATE)
 tempo_detector.set_threshold(0.2)
+tempo_detector.set_silence(-40)
 
 # Initialize note detection
 note_detector = aubio.notes("default", BUFFER_SIZE, HOP_SIZE, SAMPLE_RATE)
@@ -161,9 +162,14 @@ def combine_packets(packets, volume_history):
         is_beat = any(packet["onsets"][method] for packet in packets)
         result[method] = is_beat
 
-    # Combine tempo data (OR the tempo_beat, use latest BPM)
+    # Combine tempo data (OR the tempo_beat, average recent BPM values)
     is_tempo_beat = any(packet["tempo_beat"] for packet in packets)
-    result["bpm"] = packets[-1]["bpm"]
+    # Calculate average BPM to smooth out fluctuations
+    bpm_values = [packet["bpm"] for packet in packets if packet["bpm"] > 0]
+    if bpm_values:
+        result["bpm"] = float(sum(bpm_values) / len(bpm_values))
+    else:
+        result["bpm"] = 0.0
     result["tempo_beat"] = is_tempo_beat
 
     # Find the pitch with highest confidence from all packets
