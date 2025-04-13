@@ -165,13 +165,15 @@ def combine_packets(packets, volume_history):
     # Combine tempo data (OR the tempo_beat, average recent BPM values)
     is_tempo_beat = any(packet["tempo_beat"] for packet in packets)
     # Calculate average BPM to smooth out fluctuations
-    bpm_values = [packet["bpm"] for packet in packets if packet["bpm"] > 0]
-    if bpm_values:
-        avg_bpm = float(sum(bpm_values) / len(bpm_values))
-        # If BPM is over 120, cut it in half to handle double tempo detection
-        if avg_bpm > 120:
-            avg_bpm = avg_bpm / 2
-        result["bpm"] = avg_bpm
+    # Normalize each BPM value individually (halve values over 120)
+    normalized_bpm_values = [
+        bpm / 2 if bpm > 120 else bpm
+        for packet in packets
+        if (bpm := packet["bpm"]) > 0
+    ]
+
+    if normalized_bpm_values:
+        result["bpm"] = float(sum(normalized_bpm_values) / len(normalized_bpm_values))
     else:
         result["bpm"] = 0.0
     result["tempo_beat"] = is_tempo_beat
