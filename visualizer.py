@@ -6,7 +6,7 @@ import paho.mqtt.client as mqtt
 from datetime import datetime
 
 # Window setup
-WIDTH, HEIGHT = 600, 350
+WIDTH, HEIGHT = 600, 450  # Increased height to accommodate pitch visualizer
 FPS = 30
 BACKGROUND_COLOR = (10, 10, 20)
 
@@ -152,6 +152,81 @@ class NoteVisualizer:
             )
 
 
+class PitchVisualizer:
+    def __init__(self):
+        # Store pitches with their activation times
+        self.active_pitches = {}  # {pitch_value: activation_time}
+        self.min_pitch = 60  # Min frequency in Hz
+        self.max_pitch = 6000  # Max frequency in Hz - increased for higher pitches
+        self.fade_duration = 350  # Fade out duration in ms
+
+    def activate(self, pitch, confidence, current_time):
+        if confidence > 0.3 and pitch > 0:
+            # Add current pitch with its activation time
+            self.active_pitches[pitch] = current_time
+
+    def render(self, surface, font, x, y, width, current_time):
+        """Draw the pitch visualizer with boxes that fade out over time"""
+        # Draw label
+        label_surface = font.render("Pitch", True, (200, 200, 200))
+        surface.blit(label_surface, (x, y))
+
+        # Draw background panel
+        panel_y = y + 30
+        panel_height = 30
+        pygame.draw.rect(surface, (20, 20, 30), (x, panel_y, width, panel_height))
+        pygame.draw.rect(surface, (50, 50, 60), (x, panel_y, width, panel_height), 1)
+
+        # Find pitches that have expired and should be removed
+        pitches_to_remove = []
+        for pitch, activation_time in self.active_pitches.items():
+            # Check if this pitch's fade duration has expired
+            if current_time - activation_time >= self.fade_duration:
+                pitches_to_remove.append(pitch)
+
+        # Remove expired pitches
+        for pitch in pitches_to_remove:
+            self.active_pitches.pop(pitch)
+
+        # Create a separate surface for additive blending of pitch boxes
+        pitch_surface = pygame.Surface((width, panel_height), pygame.SRCALPHA)
+        pitch_surface.fill((0, 0, 0, 0))  # Transparent background
+
+        # Draw all active pitches with fading onto the pitch surface
+        for pitch, activation_time in self.active_pitches.items():
+            # Calculate fade factor based on how long since activation
+            time_elapsed = current_time - activation_time
+            fade_factor = 1.0 - (time_elapsed / self.fade_duration)
+
+            # Clip pitch to our range
+            clipped_pitch = max(self.min_pitch, min(self.max_pitch, pitch))
+
+            # Map pitch to position in the bar
+            position_ratio = (clipped_pitch - self.min_pitch) / (
+                self.max_pitch - self.min_pitch
+            )
+            box_x = int((position_ratio * (width - 20)))  # Relative to pitch_surface
+
+            # Draw the pitch indicator box
+            box_size = 20
+            box_y = 5  # Relative to pitch_surface
+
+            # Apply fade to color (255 -> 0 as fade progresses)
+            color_value = int(
+                255 * fade_factor
+            )  # Lower base value for better additive effect
+            alpha_value = int(255 * fade_factor)
+            box_color = (color_value, color_value, color_value, alpha_value)
+
+            # Draw rectangle to the surface (draw.rect doesn't support special_flags)
+            pygame.draw.rect(
+                pitch_surface, box_color, (box_x, box_y, box_size, box_size)
+            )
+
+        # Blit the combined pitch surface onto the main surface with additive blending
+        surface.blit(pitch_surface, (x, panel_y), special_flags=pygame.BLEND_ADD)
+
+
 def main():
     # Initialize Pygame
     pygame.init()
@@ -201,6 +276,9 @@ def main():
     # Initialize note visualizer
     note_viz = NoteVisualizer()
 
+    # Initialize pitch visualizer
+    pitch_viz = PitchVisualizer()
+
     # Track time for smooth updates
     last_time = pygame.time.get_ticks()
 
@@ -237,6 +315,14 @@ def main():
             if "notes" in latest_data:
                 notes = latest_data["notes"]
                 note_viz.update(notes)
+
+            # Update pitch visualizer from MQTT data
+            if "pitch" in latest_data:
+                pitch_data = latest_data["pitch"]
+                if "value" in pitch_data and "confidence" in pitch_data:
+                    pitch_viz.activate(
+                        pitch_data["value"], pitch_data["confidence"], current_time
+                    )
 
         # Check if it's time for a blink transition
         if current_time >= next_transition_time:
@@ -334,6 +420,10 @@ def main():
             detector_y + max(len(left_col), len(right_col)) * detector_height + 20
         )
         note_viz.render(screen, font, 40, note_viz_y, WIDTH - 80, 200)
+
+        # Draw pitch visualizer below the note visualizer
+        pitch_viz_y = note_viz_y + 100
+        pitch_viz.render(screen, font, 40, pitch_viz_y, WIDTH - 80, current_time)
 
         # Display MQTT connection status
         status_text = "Connected" if latest_data else "No MQTT data"
