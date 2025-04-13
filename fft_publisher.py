@@ -260,9 +260,8 @@ try:
         # Calculate energy in each frequency band
         band_energy = calculate_band_energy(fft_data, freqs)
 
-        # Apply gain multiplier to band energy
-        # This makes the display less active during quiet periods
-        band_energy = [e * gain_multiplier for e in band_energy]
+        # We no longer apply gain multiplier to the actual data
+        # Gain multiplier is now only used to control visualization state
 
         # Apply smoothing to band energy
         smoothed_band_energy = smoothing_factor * smoothed_band_energy + (
@@ -279,12 +278,12 @@ try:
             descriptor = float(detector.get_descriptor())
             threshold = float(detector.get_threshold())
 
-            # Apply gain multiplier to descriptor values (makes visualization less active during quiet periods)
-            adjusted_descriptor = descriptor * gain_multiplier
+            # No longer applying gain multiplier to descriptors
+            # Let visualizer handle display control based on gain
 
             onset_data[method] = {
                 "is_beat": is_beat,
-                "descriptor": adjusted_descriptor,  # Using adjusted descriptor
+                "descriptor": descriptor,  # Using unadjusted descriptor
                 "threshold": threshold,
             }
 
