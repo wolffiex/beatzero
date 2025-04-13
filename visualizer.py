@@ -154,20 +154,19 @@ class NoteVisualizer:
 
 class PitchVisualizer:
     def __init__(self):
-        self.pitch = 0
-        self.confidence = 0
-        self.active_time = 0
+        # Store pitches with their activation times
+        self.active_pitches = {}  # {pitch_value: activation_time}
         self.min_pitch = 60  # Min frequency in Hz
         self.max_pitch = 6000  # Max frequency in Hz - increased for higher pitches
+        self.fade_duration = 350  # Fade out duration in ms
 
     def activate(self, pitch, confidence, current_time):
-        if confidence > 0.3:
-            self.pitch = pitch
-            self.confidence = confidence
-            self.active_time = current_time
+        if confidence > 0.3 and pitch > 0:
+            # Add current pitch with its activation time
+            self.active_pitches[pitch] = current_time
 
     def render(self, surface, font, x, y, width, current_time):
-        """Draw the pitch visualizer with a box that moves based on frequency"""
+        """Draw the pitch visualizer with boxes that fade out over time"""
         # Draw label
         label_surface = font.render("Pitch", True, (200, 200, 200))
         surface.blit(label_surface, (x, y))
@@ -178,30 +177,54 @@ class PitchVisualizer:
         pygame.draw.rect(surface, (20, 20, 30), (x, panel_y, width, panel_height))
         pygame.draw.rect(surface, (50, 50, 60), (x, panel_y, width, panel_height), 1)
 
-        # Check if pitch is active (within the last 100ms)
-        active = current_time - self.active_time < 200
+        # Find pitches that have expired and should be removed
+        pitches_to_remove = []
+        for pitch, activation_time in self.active_pitches.items():
+            # Check if this pitch's fade duration has expired
+            if current_time - activation_time >= self.fade_duration:
+                pitches_to_remove.append(pitch)
 
-        if active and self.pitch > 0:
+        # Remove expired pitches
+        for pitch in pitches_to_remove:
+            self.active_pitches.pop(pitch)
+
+        # Create a separate surface for additive blending of pitch boxes
+        pitch_surface = pygame.Surface((width, panel_height), pygame.SRCALPHA)
+        pitch_surface.fill((0, 0, 0, 0))  # Transparent background
+
+        # Draw all active pitches with fading onto the pitch surface
+        for pitch, activation_time in self.active_pitches.items():
+            # Calculate fade factor based on how long since activation
+            time_elapsed = current_time - activation_time
+            fade_factor = 1.0 - (time_elapsed / self.fade_duration)
+
             # Clip pitch to our range
-            clipped_pitch = max(self.min_pitch, min(self.max_pitch, self.pitch))
+            clipped_pitch = max(self.min_pitch, min(self.max_pitch, pitch))
 
-            # Map pitch to position in the bar (logarithmic scale works better for pitch)
-            # Convert frequency range to position in the bar
+            # Map pitch to position in the bar
             position_ratio = (clipped_pitch - self.min_pitch) / (
                 self.max_pitch - self.min_pitch
             )
-            box_x = int(x + (position_ratio * (width - 20)))
+            box_x = int((position_ratio * (width - 20)))  # Relative to pitch_surface
 
             # Draw the pitch indicator box
             box_size = 20
-            box_y = panel_y + 5
+            box_y = 5  # Relative to pitch_surface
 
-            box_color = (255, 255, 255)
+            # Apply fade to color (255 -> 0 as fade progresses)
+            color_value = int(
+                255 * fade_factor
+            )  # Lower base value for better additive effect
+            alpha_value = int(255 * fade_factor)
+            box_color = (color_value, color_value, color_value, alpha_value)
 
-            pygame.draw.rect(surface, box_color, (box_x, box_y, box_size, box_size))
+            # Draw rectangle to the surface (draw.rect doesn't support special_flags)
             pygame.draw.rect(
-                surface, (100, 100, 255), (box_x, box_y, box_size, box_size), 1
+                pitch_surface, box_color, (box_x, box_y, box_size, box_size)
             )
+
+        # Blit the combined pitch surface onto the main surface with additive blending
+        surface.blit(pitch_surface, (x, panel_y), special_flags=pygame.BLEND_ADD)
 
 
 def main():
