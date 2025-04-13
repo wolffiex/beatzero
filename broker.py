@@ -166,8 +166,20 @@ def combine_packets(packets, volume_history):
     result["bpm"] = packets[-1]["bpm"]
     result["tempo_beat"] = is_tempo_beat
 
-    # Use the latest pitch data
-    result["pitch"] = packets[-1]["pitch"]
+    # Find the pitch with highest confidence from all packets
+    best_pitch = 0
+    best_confidence = 0
+
+    for packet in packets:
+        pitch_value = packet["pitch"]["value"]
+        pitch_confidence = packet["pitch"]["confidence"]
+
+        if pitch_confidence > best_confidence:
+            best_confidence = pitch_confidence
+            best_pitch = pitch_value
+
+    # Store the best pitch data
+    result["pitch"] = {"value": best_pitch, "confidence": best_confidence}
 
     # Combine all detected notes from all packets
     combined_notes = set()
