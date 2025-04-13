@@ -114,9 +114,6 @@ def process_audio_buffer(signal):
     # Process current audio buffer
     data = {}
 
-    # Timestamp
-    data["timestamp"] = datetime.now().isoformat()
-
     # Detect onsets with all methods
     onset_data = {}
     for method, detector in onset_detectors.items():
@@ -150,17 +147,12 @@ def combine_packets(packets):
     if not packets:
         return None
 
-    # Use the timestamp of the most recent packet
-    result = {"timestamp": packets[-1]["timestamp"]}
+    result = {}
 
-    # Combine onset data (OR the is_beat flags)
-    onset_data = {}
     for method in ONSET_METHODS:
         # OR together all is_beat flags
         is_beat = any(packet["onsets"][method] for packet in packets)
-
-        onset_data[method] = is_beat
-    result["onsets"] = onset_data
+        result[method] = is_beat
 
     # Combine tempo data (OR the tempo_beat, use latest BPM)
     is_tempo_beat = any(packet["tempo_beat"] for packet in packets)
