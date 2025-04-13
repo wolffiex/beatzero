@@ -120,7 +120,7 @@ def publish_data(data):
 
 
 def calculate_band_energy(fft_data, freqs):
-    """Calculate energy in each frequency band with adaptive scaling"""
+    """Calculate energy in each frequency band with adaptive scaling and bass attenuation"""
     band_energy = []
     # Calculate raw energies first to determine adaptive scaling
     raw_energies = []
@@ -135,20 +135,36 @@ def calculate_band_energy(fft_data, freqs):
             raw_energies.append(energy)
         else:
             raw_energies.append(0.0)
-            
+
+    # Attenuate bass before calculating max energy for better balance
+    # First band is bass (80-250Hz) - attenuate it
+    if len(raw_energies) > 0:
+        # Store original bass energy
+        original_bass = raw_energies[0]
+        # Apply attenuation to bass for max energy calculation
+        raw_energies[0] *= 0.5  # Reduce bass by 50%
+
     # Calculate adaptive scaling factor based on maximum energy
-    # Only scale if we have non-zero energy
     max_energy = max(raw_energies) if raw_energies else 0
     if max_energy > 0:
         # Scale so that the max value will be around 0.7-0.8 but not saturate
-        adaptive_scale = 0.8 / max_energy 
+        adaptive_scale = 0.8 / max_energy
     else:
         adaptive_scale = 1.0
-        
+
+    # Restore original bass energy before final scaling
+    if len(raw_energies) > 0:
+        raw_energies[0] = original_bass
+
     # Apply the adaptive scaling to all bands
-    for energy in raw_energies:
-        # Apply scaling and ensure we don't exceed 1.0
-        scaled_energy = min(1.0, energy * adaptive_scale)
+    for i, energy in enumerate(raw_energies):
+        # Apply extra attenuation to bass (80-250Hz)
+        if i == 0:
+            # Apply scaling and bass attenuation but ensure we don't exceed 1.0
+            scaled_energy = min(1.0, energy * adaptive_scale * 0.5)
+        else:
+            # Apply normal scaling for other bands
+            scaled_energy = min(1.0, energy * adaptive_scale)
         band_energy.append(float(scaled_energy))
 
     return band_energy
@@ -256,12 +272,12 @@ try:
         # Detect kick drum (using energy detector and bass band)
         kick_detected = bool(
             onset_data.get("energy", {}).get("is_beat", False)
-            and smoothed_band_energy[0] > 0.5  # Bass band (80-250Hz) for kick detection
+            and smoothed_band_energy[0] > 0.4  # Lower threshold due to bass attenuation
         )
 
-        # Detect hi-hat (using the 5-8kHz ultra high frequency band)
+        # Detect hi-hat (using the 4-8kHz ultra high frequency band)
         hihat_detected = bool(
-            smoothed_band_energy[7] > 0.5  # Ultra high band (5-8kHz)
+            smoothed_band_energy[6] > 0.7  # Ultra high band (4-8kHz)
             and onset_data.get("hfc", {}).get("is_beat", False)
         )
 
